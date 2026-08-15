@@ -1141,6 +1141,12 @@ input:focus,select:focus,textarea:focus{
       <section id="tab-history" class="tab-panel">
         <div class="panel">
           <div class="panel-heading"><h2>Report History</h2><span>Open any submitted or draft date</span></div>
+          <div class="export-bar" style="position:static;margin:0 0 18px 0;justify-content:flex-start;flex-wrap:wrap">
+            <button id="uploadExistingBtn" class="btn primary">Upload Existing Reports to Cloud</button>
+            <button id="exportBackupBtn" class="btn secondary">Export Backup</button>
+            <label class="btn secondary" for="importBackupFile" style="cursor:pointer">Import Backup</label>
+            <input id="importBackupFile" type="file" accept=".json,application/json" style="display:none" />
+          </div>
           <div id="historyList" class="history-list"></div>
         </div>
       </section>
@@ -1972,12 +1978,63 @@ async function connectSync(silent=false){const url=AXESS_SUPABASE_URL,key=AXESS_
 function disconnectSync(){state.supabase=null;state.syncConfig={url:'',key:''};setSyncBadge('Offline');toast('Cloud sync disconnected')}
 async function cloudUpsert(report){if(!state.supabase||!report||!report.date)return;try{const {error}=await state.supabase.from('axess_dpr_reports').upsert({report_date:report.date,data:report,updated_at:new Date().toISOString()},{onConflict:'report_date'});if(error)throw error}catch(e){console.warn('Cloud save failed',e);setSyncBadge('Sync issue')}}
 function setupRealtime(){if(!state.supabase)return;try{if(state.realtimeChannel)state.supabase.removeChannel(state.realtimeChannel)}catch(_e){}state.realtimeChannel=state.supabase.channel('axess-dpr').on('postgres_changes',{event:'*',schema:'public',table:'axess_dpr_reports'},payload=>{const row=payload.new;if(!row?.report_date)return;state.reports[row.report_date]=row.data;persist();renderHistory();renderDashboard();if(state.current?.date===row.report_date){state.current=structuredClone(row.data);populateForm()}toast('DPR updated by another user')}).subscribe()}
+
+async function uploadExistingReportsToCloud(){
+  if(!state.supabase){
+    toast('Cloud Sync is not connected. Please wait for Cloud Sync and try again.');
+    return;
+  }
+  captureForm();
+  if(state.current?.date) state.reports[state.current.date]=structuredClone(state.current);
+  persist();
+
+  const entries=Object.entries(state.reports||{}).filter(([date,report])=>date&&report);
+  if(!entries.length){
+    toast('No existing DPR reports found in this browser.');
+    return;
+  }
+
+  const btn=$('uploadExistingBtn');
+  if(btn){btn.disabled=true;btn.dataset.oldText=btn.textContent;btn.textContent='Uploading 0 / '+entries.length+'…';}
+
+  try{
+    let done=0;
+    for(const [date,report] of entries){
+      const clean=structuredClone(report);
+      if(!clean.date) clean.date=date;
+      const {error}=await state.supabase.from('axess_dpr_reports').upsert(
+        {report_date:date,data:clean,updated_at:new Date().toISOString()},
+        {onConflict:'report_date'}
+      );
+      if(error) throw error;
+      done++;
+      if(btn) btn.textContent='Uploading '+done+' / '+entries.length+'…';
+    }
+    setSyncBadge('Cloud Sync',true);
+    toast(entries.length+' existing DPR report'+(entries.length===1?'':'s')+' uploaded to cloud successfully.');
+    renderHistory();
+    renderDashboard();
+  }catch(e){
+    console.error('Existing DPR cloud migration failed',e);
+    setSyncBadge('Sync issue');
+    toast('Cloud upload failed: '+(e?.message||'Unknown error'));
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=btn.dataset.oldText||'Upload Existing Reports to Cloud';}
+  }
+}
+
 function exportBackup(){captureForm();const data={project:state.project,locations:state.locations,reports:{...state.reports,[state.current.date]:state.current},exportedAt:new Date().toISOString()};downloadBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),'Axess_DPR_Backup.json')}
 async function importBackup(ev){const f=ev.target.files[0];if(!f)return;try{const data=JSON.parse(await f.text());if(data.project)state.project=data.project;if(data.locations)state.locations=data.locations;if(data.reports)state.reports=data.reports;persist();renderProject();renderLocations();renderHistory();loadDate($('reportDate').value);toast('Backup imported')}catch{toast('Invalid backup file')}ev.target.value=''}
 
 document.addEventListener('input',e=>{if(['TEXTAREA','INPUT','SELECT'].includes(e.target.tagName)&&state.current&&e.target.closest('#tab-daily')&&!e.target.matches('#reportDate')){clearTimeout(window.__auto);window.__auto=setTimeout(()=>autoSave(false),500)}});
 window.addEventListener('beforeunload',()=>{if(state.current){captureForm();state.reports[state.current.date]=state.current;persist()}});
 init();
+const uploadExistingBtn=$('uploadExistingBtn');
+if(uploadExistingBtn) uploadExistingBtn.addEventListener('click',uploadExistingReportsToCloud);
+const exportBackupBtn=$('exportBackupBtn');
+if(exportBackupBtn) exportBackupBtn.addEventListener('click',exportBackup);
+const importBackupFile=$('importBackupFile');
+if(importBackupFile) importBackupFile.addEventListener('change',importBackup);
 
 </script>
 </body>

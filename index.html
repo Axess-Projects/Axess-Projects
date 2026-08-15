@@ -2303,7 +2303,45 @@ function printReportToPDF(){
       .report-page{margin:0!important;box-shadow:none!important;page-break-after:always}
       .report-page:last-child{page-break-after:auto}
     }
-  </style></head><body>${reportHTML}<script>
+  
+/* ============================================================
+   PDF HEADER ALIGNMENT — MANUAL REPORT REFERENCE
+   Header-only correction. Everything below the header is unchanged.
+   ============================================================ */
+.report-page .report-header.official-header{
+  overflow:visible !important;
+}
+
+.report-page .report-header.official-header img{
+  position:absolute !important;
+  left:-14mm !important;
+  top:-10mm !important;
+  width:210mm !important;
+  height:auto !important;
+  max-width:none !important;
+  max-height:none !important;
+  object-fit:fill !important;
+  object-position:top left !important;
+  display:block !important;
+}
+
+/* Keep exactly the same full-width header treatment when page fitting
+   switches to compact/ultra modes. */
+.report-page.report-compact .report-header.official-header img,
+.report-page.report-ultra .report-header.official-header img,
+.report-page.page2 .report-header.official-header img,
+.report-page.photo-continuation .report-header.official-header img{
+  left:-14mm !important;
+  top:-10mm !important;
+  width:210mm !important;
+  height:auto !important;
+  max-width:none !important;
+  max-height:none !important;
+  object-fit:fill !important;
+  object-position:top left !important;
+}
+
+</style></head><body>${reportHTML}<script>
     window.addEventListener('load',()=>setTimeout(()=>window.print(),650));
   <\/script></body></html>`);
   w.document.close();

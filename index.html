@@ -858,9 +858,51 @@ input:focus,select:focus,textarea:focus{
   pointer-events:none;
 }
 
+
+/* AXESS AUTH */
+#authGate{position:fixed;inset:0;z-index:99999;background:linear-gradient(135deg,#f4fbfc,#eef7f8 58%,#ffffff);display:flex;align-items:center;justify-content:center;padding:24px}
+#authGate.hidden{display:none}
+.auth-card{width:min(460px,100%);background:#fff;border:1px solid #dbe8ea;border-radius:28px;padding:34px;box-shadow:0 24px 70px rgba(19,54,59,.16)}
+.auth-brand{display:flex;align-items:center;gap:16px;margin-bottom:26px}
+.auth-brand img{width:120px;height:auto;object-fit:contain}
+.auth-title{font-size:28px;font-weight:900;color:#17343a;margin:0}
+.auth-sub{font-size:14px;color:#678087;margin:5px 0 0}
+.auth-card label{display:block;font-size:13px;font-weight:800;color:#415b61;margin:14px 0 7px}
+.auth-card input{width:100%;box-sizing:border-box;border:1px solid #ccdadd;border-radius:13px;padding:13px 14px;font:inherit;outline:none;background:#fbfdfd}
+.auth-card input:focus{border-color:#009aa6;box-shadow:0 0 0 3px rgba(0,154,166,.10)}
+.auth-login-btn{width:100%;margin-top:20px;border:0;border-radius:13px;padding:14px 16px;font-weight:900;font-size:16px;color:white;background:#009aa6;cursor:pointer}
+.auth-login-btn:disabled{opacity:.6;cursor:wait}
+.auth-error{min-height:20px;margin-top:12px;font-size:13px;font-weight:700;color:#b42318}
+.auth-note{margin-top:18px;padding-top:16px;border-top:1px solid #e6eeee;font-size:12px;color:#71868b;line-height:1.5}
+.auth-user-pill{position:fixed;right:22px;bottom:20px;z-index:9990;background:#fff;border:1px solid #d6e5e7;border-radius:999px;padding:8px 10px 8px 14px;box-shadow:0 8px 28px rgba(19,54,59,.12);display:none;align-items:center;gap:10px;font-size:12px;color:#446168}
+.auth-user-pill.show{display:flex}
+.auth-user-pill button{border:0;background:#eef6f7;border-radius:999px;padding:7px 10px;cursor:pointer;font-weight:800;color:#36565c}
+
 </style>
 </head>
 <body>
+
+<div id="authGate">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div>
+        <h1 class="auth-title">Axess DPR Login</h1>
+        <p class="auth-sub">Deepwater Thalassa • Secure Cloud Access</p>
+      </div>
+    </div>
+    <form id="authForm">
+      <label for="authEmail">Axess Email</label>
+      <input id="authEmail" type="email" autocomplete="username" placeholder="name@axessgroup.com" required>
+      <label for="authPassword">Password</label>
+      <input id="authPassword" type="password" autocomplete="current-password" placeholder="Enter your password" required>
+      <button id="authLoginBtn" class="auth-login-btn" type="submit">Sign in</button>
+      <div id="authError" class="auth-error"></div>
+    </form>
+    <div class="auth-note">Access is restricted to approved Axess users. DPR reports are loaded from Supabase only after successful sign-in.</div>
+  </div>
+</div>
+<div id="authUserPill" class="auth-user-pill"><span id="authUserEmail"></span><button id="authLogoutBtn" type="button">Sign out</button></div>
+
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand-card">
@@ -1248,7 +1290,7 @@ function init(){
  $('printPdfBtn').onclick=()=>runAction(printReportToPDF,'Print PDF');
  $('saveProject').onclick=saveProject; $('saveLocations').onclick=saveLocations; $('addLocation').onclick=()=>{state.locations.push({id:'loc_'+Date.now(),name:'New Location',area:0});renderLocations()};
  renderProject(); renderLocations(); renderHistory(); loadDate(todayISO()); renderDashboard(); switchTab('overview');
- setTimeout(()=>attemptAutoSync(),0);
+ setSyncBadge('Sign in required');
 }
 function switchTab(tab){document.querySelectorAll('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));document.querySelectorAll('.tab-panel').forEach(x=>x.classList.remove('active'));$('tab-'+tab).classList.add('active'); if(tab==='history')renderHistory(); if(tab==='overview')renderDashboard();}
 
@@ -1973,9 +2015,90 @@ const AXESS_SUPABASE_KEY='sb_publishable_muUcg14erpuEtA2FWyuvmg_ir8zFje1';
 function setSyncBadge(text,live=false){const b=$('syncBadge');if(!b)return;b.textContent=text;b.className='badge '+(live?'live':'neutral')}
 function renderSync(){setSyncBadge(state.supabase?'Cloud Sync':'Offline',!!state.supabase)}
 function loadScriptOnce(src,globalName){return new Promise((resolve,reject)=>{if(globalName&&window[globalName])return resolve();const old=document.querySelector('script[data-dynamic-src="'+src+'"]');if(old){if(globalName&&window[globalName])return resolve();old.addEventListener('load',resolve,{once:true});old.addEventListener('error',reject,{once:true});return}const sc=document.createElement('script');sc.src=src;sc.async=true;sc.dataset.dynamicSrc=src;sc.onload=()=>resolve();sc.onerror=()=>reject(new Error('Online library could not be loaded'));document.head.appendChild(sc)})}
-async function attemptAutoSync(){await connectSync(true)}
-async function connectSync(silent=false){const url=AXESS_SUPABASE_URL,key=AXESS_SUPABASE_KEY;if(!window.supabase){try{setSyncBadge('Connecting…');await loadScriptOnce('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2','supabase')}catch(e){setSyncBadge('Offline');if(!silent)toast('Cloud sync requires an internet connection');return}}try{state.supabase=window.supabase.createClient(url,key);state.syncConfig={url,key};const {data,error}=await state.supabase.from('axess_dpr_reports').select('report_date,data').limit(1000);if(error)throw error;(data||[]).forEach(row=>state.reports[row.report_date]=row.data);persist();setSyncBadge('Cloud Sync',true);setupRealtime();renderHistory();loadDate($('reportDate').value);renderDashboard();if(!silent)toast('Cloud sync connected')}catch(e){console.error('Supabase sync failed',e);state.supabase=null;setSyncBadge('Offline');if(!silent)toast('Sync failed: '+e.message)}}
-function disconnectSync(){state.supabase=null;state.syncConfig={url:'',key:''};setSyncBadge('Offline');toast('Cloud sync disconnected')}
+const AXESS_ALLOWED_EMAILS=new Set([
+  'samson.johnson@axessgroup.com',
+  'gevea.johnson@axessgroup.com',
+  'umair.mulla@axessgroup.com',
+  'alexander.arakal@axessgroup.com'
+]);
+
+async function ensureSupabaseClient(){
+  if(!window.supabase){
+    setSyncBadge('Connecting…');
+    await loadScriptOnce('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2','supabase');
+  }
+  if(!state.supabase){
+    state.supabase=window.supabase.createClient(AXESS_SUPABASE_URL,AXESS_SUPABASE_KEY,{
+      auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}
+    });
+    state.syncConfig={url:AXESS_SUPABASE_URL,key:AXESS_SUPABASE_KEY};
+  }
+  return state.supabase;
+}
+
+function showAuthGate(message=''){
+  $('authGate')?.classList.remove('hidden');
+  $('authUserPill')?.classList.remove('show');
+  if($('authError')) $('authError').textContent=message||'';
+  setSyncBadge('Sign in required');
+}
+
+function showAuthenticatedUI(email){
+  $('authGate')?.classList.add('hidden');
+  if($('authUserEmail')) $('authUserEmail').textContent=email;
+  $('authUserPill')?.classList.add('show');
+}
+
+async function loadCloudReports(silent=false){
+  const client=await ensureSupabaseClient();
+  const {data,error}=await client.from('axess_dpr_reports').select('report_date,data').limit(1000);
+  if(error) throw error;
+  (data||[]).forEach(row=>state.reports[row.report_date]=row.data);
+  persist();
+  setSyncBadge('Cloud Sync',true);
+  setupRealtime();
+  renderHistory();
+  loadDate($('reportDate').value);
+  renderDashboard();
+  if(!silent) toast('Cloud sync connected');
+}
+
+async function initAuth(){
+  try{
+    const client=await ensureSupabaseClient();
+    const {data:{session}}=await client.auth.getSession();
+    const email=(session?.user?.email||'').toLowerCase();
+    if(session && AXESS_ALLOWED_EMAILS.has(email)){
+      showAuthenticatedUI(email);
+      await loadCloudReports(true);
+    }else{
+      if(session && !AXESS_ALLOWED_EMAILS.has(email)) await client.auth.signOut();
+      showAuthGate();
+    }
+    client.auth.onAuthStateChange(async(event,session2)=>{
+      const e=(session2?.user?.email||'').toLowerCase();
+      if(event==='SIGNED_OUT' || !session2){showAuthGate();return;}
+      if(!AXESS_ALLOWED_EMAILS.has(e)){
+        await client.auth.signOut();
+        showAuthGate('This account is not authorized for the Axess DPR.');
+        return;
+      }
+      showAuthenticatedUI(e);
+      try{await loadCloudReports(true)}catch{}
+    });
+  }catch(e){
+    console.error('Authentication initialization failed',e);
+    showAuthGate('Unable to connect to secure login. Check your internet connection and try again.');
+  }
+}
+
+async function attemptAutoSync(){await loadCloudReports(true)}
+async function connectSync(silent=false){return loadCloudReports(silent)}
+async function disconnectSync(){
+  try{const client=await ensureSupabaseClient();await client.auth.signOut()}catch{}
+  setSyncBadge('Signed out');
+  showAuthGate();
+}
 async function cloudUpsert(report){if(!state.supabase||!report||!report.date)return;try{const {error}=await state.supabase.from('axess_dpr_reports').upsert({report_date:report.date,data:report,updated_at:new Date().toISOString()},{onConflict:'report_date'});if(error)throw error}catch(e){console.warn('Cloud save failed',e);setSyncBadge('Sync issue')}}
 function setupRealtime(){if(!state.supabase)return;try{if(state.realtimeChannel)state.supabase.removeChannel(state.realtimeChannel)}catch(_e){}state.realtimeChannel=state.supabase.channel('axess-dpr').on('postgres_changes',{event:'*',schema:'public',table:'axess_dpr_reports'},payload=>{const row=payload.new;if(!row?.report_date)return;state.reports[row.report_date]=row.data;persist();renderHistory();renderDashboard();if(state.current?.date===row.report_date){state.current=structuredClone(row.data);populateForm()}toast('DPR updated by another user')}).subscribe()}
 
@@ -2029,6 +2152,48 @@ async function importBackup(ev){const f=ev.target.files[0];if(!f)return;try{cons
 document.addEventListener('input',e=>{if(['TEXTAREA','INPUT','SELECT'].includes(e.target.tagName)&&state.current&&e.target.closest('#tab-daily')&&!e.target.matches('#reportDate')){clearTimeout(window.__auto);window.__auto=setTimeout(()=>autoSave(false),500)}});
 window.addEventListener('beforeunload',()=>{if(state.current){captureForm();state.reports[state.current.date]=state.current;persist()}});
 init();
+
+const authForm=$('authForm');
+if(authForm) authForm.addEventListener('submit',async ev=>{
+  ev.preventDefault();
+  const btn=$('authLoginBtn');
+  const err=$('authError');
+  const email=($('authEmail')?.value||'').trim().toLowerCase();
+  const password=$('authPassword')?.value||'';
+  if(err) err.textContent='';
+  if(!AXESS_ALLOWED_EMAILS.has(email)){
+    if(err) err.textContent='This email is not authorized for the Axess DPR.';
+    return;
+  }
+  if(btn){btn.disabled=true;btn.textContent='Signing in…';}
+  try{
+    const client=await ensureSupabaseClient();
+    const {data,error}=await client.auth.signInWithPassword({email,password});
+    if(error) throw error;
+    const signedEmail=(data?.user?.email||'').toLowerCase();
+    if(!AXESS_ALLOWED_EMAILS.has(signedEmail)){
+      await client.auth.signOut();
+      throw new Error('This account is not authorized for the Axess DPR.');
+    }
+    showAuthenticatedUI(signedEmail);
+    await loadCloudReports(false);
+    if($('authPassword')) $('authPassword').value='';
+  }catch(e){
+    console.error('Sign in failed',e);
+    if(err) err.textContent=e?.message||'Sign in failed.';
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='Sign in';}
+  }
+});
+
+const authLogoutBtn=$('authLogoutBtn');
+if(authLogoutBtn) authLogoutBtn.addEventListener('click',async()=>{
+  try{const client=await ensureSupabaseClient();await client.auth.signOut()}catch{}
+  showAuthGate();
+});
+
+initAuth();
+
 const uploadExistingBtn=$('uploadExistingBtn');
 if(uploadExistingBtn) uploadExistingBtn.addEventListener('click',uploadExistingReportsToCloud);
 const exportBackupBtn=$('exportBackupBtn');

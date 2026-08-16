@@ -1911,7 +1911,15 @@ function renderDashboard(){
     return st&&WEIGHTS.some(w=>num(st[w.key])>0);
   }).length;
 
-  const crew=structuredClone(state.teamMaster||state.current?.team||DEFAULT_TEAM);
+  // Crew Activity Overview must show the latest/current crew rotation from the
+  // most recent saved Daily Update, while older DPR dates retain their own
+  // historical rotation snapshots.
+  const latestCrewReport=latestDate?state.reports[latestDate]:null;
+  const crew=structuredClone(
+    (latestCrewReport?.team&&Array.isArray(latestCrewReport.team)&&latestCrewReport.team.length)
+      ? latestCrewReport.team
+      : (state.teamMaster||state.current?.team||DEFAULT_TEAM)
+  );
   const today=todayISO();
   const selectedDate=state.current?.date||today;
   const safeSelectedDate=selectedDate>today?today:selectedDate;
@@ -2031,15 +2039,17 @@ function ensureTeamMaster(){
   if(!Array.isArray(state.teamMaster)||!state.teamMaster.length)state.teamMaster=structuredClone(DEFAULT_TEAM);
 }
 function mergeMasterMobilizedIntoReport(report){
+  // Historical DPR snapshots are immutable: never overwrite Date Mobilized or
+  // Rotation that was already saved for that report date. The master crew
+  // record is used only to initialise missing fields / brand-new reports.
   ensureTeamMaster();
   if(!report.team||!Array.isArray(report.team))report.team=structuredClone(state.teamMaster);
   report.team.forEach((e,i)=>{
     const byName=state.teamMaster.find(m=>m.name&&e.name&&m.name===e.name);
     const master=byName||state.teamMaster[i];
-    if(master){
-      if(master.mobilized!==undefined)e.mobilized=master.mobilized;
-      if(master.rotation!==undefined)e.rotation=master.rotation;
-    }
+    if(!master)return;
+    if((e.mobilized===undefined||e.mobilized===null||e.mobilized==='') && master.mobilized!==undefined)e.mobilized=master.mobilized;
+    if((e.rotation===undefined||e.rotation===null||e.rotation==='') && master.rotation!==undefined)e.rotation=master.rotation;
   });
   return report;
 }
@@ -2085,6 +2095,8 @@ async function saveCurrentBeforeDateChange(){
 
 async function loadDate(date){
   const stored=state.reports[date];
+  // Existing dates load their own saved snapshot. New dates inherit the latest
+  // crew master values, but later edits can never rewrite earlier snapshots.
   state.current=stored?structuredClone(stored):newReport(date);
   mergeMasterMobilizedIntoReport(state.current);
 

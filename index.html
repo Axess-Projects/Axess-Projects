@@ -1457,6 +1457,7 @@ input,textarea,select{
             <div id="photoGrid" class="photo-grid"></div>
             <input id="photoInput" type="file" accept="image/*" multiple hidden />
             <button id="addPhotos" class="btn secondary full">Add Photos</button>
+<div class="help-text" style="margin-top:8px;text-align:center">Photos are compressed and stored securely in Supabase Storage.</div>
           </div>
           <div class="panel">
             <div class="panel-heading"><h2>Next Day & Consumption</h2></div>
@@ -1662,9 +1663,9 @@ function init(){
  $('addTeam').onclick=()=>{const row={name:'',mobilized:'',rotation:'',days:'',daysManual:false,demob:'TBD'};state.current.team.push(structuredClone(row));state.teamMaster.push(structuredClone(row));persist();renderTeam()};
  $('addPhotos').onclick=()=>$('photoInput').click(); $('photoInput').onchange=handlePhotos;
  $('updateDprBtn').onclick=()=>runAction(markCurrentDprUpdated,'Update DPR');
- $('quickPreviewBtn').onclick=()=>runAction(()=>showPreview(false),'Preview'); $('closePreview').onclick=()=>$('reportModal').classList.add('hidden');
- $('pdfBtn').onclick=()=>runAction(generatePDF,'PDF');
- $('previewPdfBtn').onclick=()=>runAction(generatePDF,'PDF');
+ $('quickPreviewBtn').onclick=()=>runAction(async()=>{await refreshCurrentPhotoUrls();showPreview(false)},'Preview'); $('closePreview').onclick=()=>$('reportModal').classList.add('hidden');
+ $('pdfBtn').onclick=()=>runAction(async()=>{await refreshCurrentPhotoUrls();return generatePDF()},'PDF');
+ $('previewPdfBtn').onclick=()=>runAction(async()=>{await refreshCurrentPhotoUrls();return generatePDF()},'PDF');
  $('printPdfBtn').onclick=()=>runAction(printReportToPDF,'Print PDF');
  $('saveProject').onclick=saveProject; $('saveLocations').onclick=saveLocations; $('addLocation').onclick=()=>{state.locations.push({id:'loc_'+Date.now(),name:'New Location',area:0});renderLocations()};
  renderProject(); renderLocations(); renderHistory(); loadDate(todayISO()); renderDashboard(); switchTab('overview');
@@ -2087,16 +2088,20 @@ async function loadDate(date){
   state.current=stored?structuredClone(stored):newReport(date);
   mergeMasterMobilizedIntoReport(state.current);
 
-  let photos=structuredClone(state.current.photos||[]);
+  state.photoRefs=structuredClone(state.current.photos||[]);
+
+  try{
+    await migrateLegacyPhotosForCurrentDate();
+  }catch(e){
+    console.warn('Legacy photo migration skipped',e);
+  }
+
+  state.photoRefs=structuredClone(state.current.photos||[]);
+  let photos=await resolvePhotoRefs(state.photoRefs);
+
   if(!photos.length){
-    const cached=await getCachedPhotosForDate(date);
-    if(cached.length){
-      photos=structuredClone(cached);
-      state.current.photos=structuredClone(cached);
-      state.reports[date]=structuredClone(state.current);
-    }
+    photos=await getCachedPhotosForDate(date);
   }else{
-    // Maintain local redundancy for cloud-loaded reports.
     cachePhotosForDate(date,photos);
   }
 
@@ -2117,7 +2122,7 @@ async function switchReportDate(date){
   await loadDate(date);
 }
 function populateForm(){const r=state.current;['hse','onsite','general','surfacePrep','paintInspection','planned','paintConsumption','crewHoursDaily','initialMobilization','agreedClient','miscNotes'].forEach(id=>$(id).value=r[id]??'');refreshCrewHours();$('dateStatus').textContent=r.lastSaved?'Saved':'New';$('dateStatus').className='status-pill draft';$('lastSaved').textContent=r.lastSaved?'Last saved: '+new Date(r.lastSaved).toLocaleString():'';renderProgress();renderPhotos();renderEnv();renderTeam();updateDprConfirmationUI();}
-function captureForm(){if(!state.current)return;['hse','onsite','general','surfacePrep','paintInspection','planned','paintConsumption','crewHoursDaily','initialMobilization','agreedClient','miscNotes'].forEach(id=>state.current[id]=$(id).value);state.current.crewHoursCum=String(cumulativeCrewHoursForDate(state.current.date,state.current.crewHoursDaily));state.current.photos=structuredClone(state.photos)}
+function captureForm(){if(!state.current)return;['hse','onsite','general','surfacePrep','paintInspection','planned','paintConsumption','crewHoursDaily','initialMobilization','agreedClient','miscNotes'].forEach(id=>state.current[id]=$(id).value);state.current.crewHoursCum=String(cumulativeCrewHoursForDate(state.current.date,state.current.crewHoursDaily));state.current.photos=structuredClone(state.photoRefs||[])}
 function autoSave(show=false){
   captureForm();
   if(state.current.dprUpdatedAt){
@@ -2302,6 +2307,7 @@ function renderTeamDaysState(){
   });
 }
 
+
 const AXESS_PHOTO_DB='axess_dpr_photo_cache_v1';
 const AXESS_PHOTO_STORE='photos';
 
@@ -2319,15 +2325,18 @@ function openPhotoDb(){
   });
 }
 
+/* IndexedDB is only a display fallback/cache.
+   Supabase Storage is the permanent shared photo store. */
 async function cachePhotosForDate(date,photos){
   if(!date)return;
   try{
+    const safe=(photos||[]).filter(x=>typeof x==='string' && !x.startsWith('data:'));
     const db=await openPhotoDb();
     await new Promise((resolve,reject)=>{
       const tx=db.transaction(AXESS_PHOTO_STORE,'readwrite');
       tx.objectStore(AXESS_PHOTO_STORE).put({
         date,
-        photos:structuredClone(photos||[]),
+        photos:safe,
         updatedAt:new Date().toISOString()
       });
       tx.oncomplete=resolve;
@@ -2335,7 +2344,7 @@ async function cachePhotosForDate(date,photos){
     });
     db.close();
   }catch(e){
-    console.warn('Local photo cache save failed',e);
+    console.warn('Local photo URL cache save failed',e);
   }
 }
 
@@ -2352,12 +2361,20 @@ async function getCachedPhotosForDate(date){
     db.close();
     return Array.isArray(row?.photos)?row.photos:[];
   }catch(e){
-    console.warn('Local photo cache load failed',e);
+    console.warn('Local photo URL cache load failed',e);
     return [];
   }
 }
 
-function photoFileToOptimizedDataURL(file){
+function sanitizeStoragePart(v){
+  return String(v||'item')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-zA-Z0-9._-]+/g,'-')
+    .replace(/^-+|-+$/g,'')
+    .slice(0,90) || 'item';
+}
+
+function photoFileToOptimizedBlob(file){
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
     reader.onerror=()=>reject(reader.error);
@@ -2365,16 +2382,25 @@ function photoFileToOptimizedDataURL(file){
       const img=new Image();
       img.onerror=()=>reject(new Error('Unable to read image.'));
       img.onload=()=>{
+        // Resize to a sensible DPR resolution and compress before cloud upload.
         const maxSide=1800;
         const scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
         const w=Math.max(1,Math.round(img.naturalWidth*scale));
         const h=Math.max(1,Math.round(img.naturalHeight*scale));
+
         const canvas=document.createElement('canvas');
-        canvas.width=w; canvas.height=h;
-        const ctx=canvas.getContext('2d');
+        canvas.width=w;
+        canvas.height=h;
+        const ctx=canvas.getContext('2d',{alpha:false});
+        ctx.fillStyle='#fff';
+        ctx.fillRect(0,0,w,h);
         ctx.drawImage(img,0,0,w,h);
-        // Professional report quality while avoiding oversized cloud payloads.
-        resolve(canvas.toDataURL('image/jpeg',0.86));
+
+        canvas.toBlob(
+          blob=>blob?resolve(blob):reject(new Error('Unable to compress image.')),
+          'image/jpeg',
+          0.82
+        );
       };
       img.src=reader.result;
     };
@@ -2382,51 +2408,244 @@ function photoFileToOptimizedDataURL(file){
   });
 }
 
+function dataUrlToBlob(dataUrl){
+  const [meta,data]=String(dataUrl).split(',');
+  const mime=(meta.match(/data:([^;]+)/)||[])[1]||'image/jpeg';
+  const bin=atob(data||'');
+  const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  return new Blob([bytes],{type:mime});
+}
+
+async function ensurePhotoStorageReady(){
+  const client=await ensureSupabaseClient();
+  const {data:{session}}=await client.auth.getSession();
+  if(!session)throw new Error('Please sign in before uploading photos.');
+  return client;
+}
+
+async function createPhotoSignedUrl(storagePath){
+  const client=await ensurePhotoStorageReady();
+  const {data,error}=await client.storage
+    .from(AXESS_PHOTO_BUCKET)
+    .createSignedUrl(storagePath,AXESS_PHOTO_SIGNED_URL_SECONDS);
+
+  if(error)throw error;
+  return data?.signedUrl||'';
+}
+
+async function resolvePhotoRef(ref){
+  if(!ref)return '';
+  if(typeof ref==='string')return ref; // legacy Base64/display URL
+  if(ref.storagePath)return createPhotoSignedUrl(ref.storagePath);
+  return ref.url||'';
+}
+
+async function resolvePhotoRefs(refs){
+  const urls=[];
+  for(const ref of (refs||[])){
+    try{
+      const url=await resolvePhotoRef(ref);
+      if(url)urls.push(url);
+    }catch(e){
+      console.warn('Unable to resolve DPR photo',ref,e);
+    }
+  }
+  return urls;
+}
+
+async function uploadPhotoBlob(blob,date,originalName='photo.jpg'){
+  const client=await ensurePhotoStorageReady();
+
+  const project=sanitizeStoragePart(state.project?.projectNumber||'project');
+  const d=sanitizeStoragePart(date||todayISO());
+  const stem=sanitizeStoragePart(originalName.replace(/\.[^.]+$/,''));
+  const unique=crypto.randomUUID
+    ? crypto.randomUUID()
+    : Date.now()+'-'+Math.random().toString(36).slice(2);
+
+  const storagePath=`${project}/${d}/${Date.now()}-${unique}-${stem}.jpg`;
+
+  const {error}=await client.storage
+    .from(AXESS_PHOTO_BUCKET)
+    .upload(storagePath,blob,{
+      contentType:'image/jpeg',
+      cacheControl:'3600',
+      upsert:false
+    });
+
+  if(error)throw error;
+
+  return {
+    storagePath,
+    name:originalName,
+    type:'image/jpeg',
+    size:blob.size,
+    uploadedAt:new Date().toISOString()
+  };
+}
+
+async function deletePhotoFromStorage(ref){
+  if(!ref || typeof ref==='string' || !ref.storagePath)return;
+
+  try{
+    const client=await ensurePhotoStorageReady();
+    const {error}=await client.storage
+      .from(AXESS_PHOTO_BUCKET)
+      .remove([ref.storagePath]);
+
+    if(error)throw error;
+  }catch(e){
+    console.warn('Photo file could not be removed from Supabase Storage',e);
+  }
+}
+
+/* Existing old Base64 DPR photos are moved to Supabase Storage automatically
+   when that DPR is opened. */
+async function migrateLegacyPhotosForCurrentDate(){
+  if(!state.current?.date)return false;
+
+  const refs=Array.isArray(state.current.photos)?state.current.photos:[];
+  if(!refs.some(x=>typeof x==='string' && x.startsWith('data:image/')))return false;
+
+  const migrated=[];
+  let changed=false;
+
+  for(let i=0;i<refs.length;i++){
+    const ref=refs[i];
+
+    if(typeof ref==='string' && ref.startsWith('data:image/')){
+      try{
+        const source=dataUrlToBlob(ref);
+        const file=new File(
+          [source],
+          `legacy-photo-${i+1}.jpg`,
+          {type:source.type||'image/jpeg'}
+        );
+        const optimized=await photoFileToOptimizedBlob(file);
+        const uploaded=await uploadPhotoBlob(
+          optimized,
+          state.current.date,
+          `legacy-photo-${i+1}.jpg`
+        );
+        migrated.push(uploaded);
+        changed=true;
+      }catch(e){
+        console.warn('Legacy photo migration failed; original photo retained.',e);
+        migrated.push(ref);
+      }
+    }else{
+      migrated.push(ref);
+    }
+  }
+
+  if(changed){
+    state.current.photos=structuredClone(migrated);
+    state.photoRefs=structuredClone(migrated);
+    state.reports[state.current.date]=structuredClone(state.current);
+    persist();
+    await cloudUpsert(structuredClone(state.current));
+  }
+
+  return changed;
+}
+
 async function savePhotosImmediately(){
   if(!state.current?.date)return;
+
   captureForm();
-  state.current.photos=structuredClone(state.photos||[]);
+  state.current.photos=structuredClone(state.photoRefs||[]);
   state.current.lastSaved=new Date().toISOString();
+
   const snapshot=structuredClone(state.current);
   state.reports[snapshot.date]=snapshot;
 
-  // Lightweight local report cache + separate IndexedDB photo cache.
   persist();
-  await cachePhotosForDate(snapshot.date,snapshot.photos);
-
-  // Shared persistent copy for all authenticated users.
+  await cachePhotosForDate(snapshot.date,state.photos||[]);
   await cloudUpsert(structuredClone(snapshot));
 }
 
 async function handlePhotos(ev){
   const files=[...ev.target.files];
   if(!files.length)return;
+
+  const btn=$('addPhotos');
+  const oldText=btn?.textContent||'Add Photos';
+
+  if(btn){
+    btn.disabled=true;
+    btn.textContent='Uploading photos…';
+  }
+
   try{
-    for(const f of files){
-      state.photos.push(await photoFileToOptimizedDataURL(f));
+    await ensurePhotoStorageReady();
+
+    for(let i=0;i<files.length;i++){
+      const f=files[i];
+      if(!f.type.startsWith('image/'))continue;
+
+      if(btn)btn.textContent=`Uploading ${i+1} / ${files.length}…`;
+
+      const optimizedBlob=await photoFileToOptimizedBlob(f);
+      const ref=await uploadPhotoBlob(
+        optimizedBlob,
+        state.current.date,
+        f.name||`photo-${i+1}.jpg`
+      );
+      const url=await createPhotoSignedUrl(ref.storagePath);
+
+      state.photoRefs=state.photoRefs||[];
+      state.photoRefs.push(ref);
+      state.photos.push(url);
     }
+
     renderPhotos();
-    toast('Saving photos…');
+    toast('Saving photo references…');
     await savePhotosImmediately();
-    toast('Photos saved');
+    toast('Photos uploaded to Supabase Storage');
   }catch(e){
-    console.error('Photo save failed',e);
-    toast('Photo save failed: '+(e?.message||'Unknown error'));
+    console.error('Photo upload failed',e);
+    toast('Photo upload failed: '+(e?.message||'Unknown error'));
   }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.textContent=oldText;
+    }
     ev.target.value='';
   }
 }
-function fileToDataURL(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)})}
+
+function fileToDataURL(f){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result);
+    r.onerror=rej;
+    r.readAsDataURL(f);
+  });
+}
+
 function renderPhotos(){
   const count=Math.max(4,state.photos.length);
+
   const slots=Array.from({length:count},(_,i)=>state.photos[i]
-    ?`<div class="photo-slot"><img src="${state.photos[i]}"><button data-del-photo="${i}">×</button></div>`
-    :`<div class="photo-slot">${i<4?'Photo '+(i+1):'Additional Photo '+(i+1)}</div>`);
+    ? `<div class="photo-slot"><img src="${state.photos[i]}" crossorigin="anonymous"><button data-del-photo="${i}">×</button></div>`
+    : `<div class="photo-slot">${i<4?'Photo '+(i+1):'Additional Photo '+(i+1)}</div>`);
+
   $('photoGrid').innerHTML=slots.join('');
+
   document.querySelectorAll('[data-del-photo]').forEach(b=>b.onclick=async()=>{
-    state.photos.splice(+b.dataset.delPhoto,1);
+    const i=+b.dataset.delPhoto;
+    const ref=(state.photoRefs||[])[i];
+
+    if(!window.confirm('Remove this photo from the DPR?'))return;
+
+    state.photos.splice(i,1);
+    if(Array.isArray(state.photoRefs))state.photoRefs.splice(i,1);
+
     renderPhotos();
+    await deletePhotoFromStorage(ref);
     await savePhotosImmediately();
+    toast('Photo removed');
   });
 }
 
@@ -2451,13 +2670,30 @@ function progressTable(stage){
  return `<table class="official-table progress-report-table"><thead><tr><th>Activity</th><th class="num">Area Covered m²</th><th class="num">Weightage</th><th class="num">Area Square Meters m²</th></tr></thead><tbody>${rows}<tr><td></td><td></td><td class="num"><b>100%</b></td><td class="num"><b>${displayNum(weightedTotal)}</b></td></tr></tbody></table>`;
 }
 function reportBullets(title,text){const arr=lines(text);return `<div class="report-section"><div class="report-section-title">${esc(title)}:</div>${arr.length?`<ul>${arr.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'<div class="no-data">N/A</div>'}</div>`}
+
+async function refreshCurrentPhotoUrls(){
+  if(!state.current)return;
+
+  state.photoRefs=structuredClone(state.current.photos||state.photoRefs||[]);
+
+  try{
+    state.photos=await resolvePhotoRefs(state.photoRefs);
+    if(state.current?.date){
+      cachePhotosForDate(state.current.date,state.photos);
+    }
+    renderPhotos();
+  }catch(e){
+    console.warn('Could not refresh photo links',e);
+  }
+}
+
 function buildReportHTML(){
  captureForm(); const r=state.current,p=state.project; const cum=getCumulative(r.date,true); const projectArea=state.locations.reduce((a,l)=>a+num(l.area),0);
  const dayLocs=(r.progress||[]).map(x=>({name:state.locations.find(l=>l.id===x.locationId)?.name||'',area:num(x.dailyArea)||Math.max(num(x.surface),num(x.stripe),num(x.second),num(x.final))})).filter(x=>x.name);
  const dayLocNames=[...new Set(dayLocs.map(x=>x.name))]; const cumNames=Object.keys(cum.byLocation).map(id=>state.locations.find(l=>l.id===id)?.name).filter(Boolean);
  const dailyStage={surface:0,stripe:0,second:0,final:0}; (r.progress||[]).forEach(x=>WEIGHTS.forEach(w=>dailyStage[w.key]+=num(x[w.key])));
  const meta=`<table class="meta-table"><tr><td class="label">Client:</td><td>${esc(p.client)}</td><td class="label">Project number:</td><td>${esc(p.projectNumber)}</td></tr><tr><td class="label">Installation:</td><td>${esc(p.installation)}</td><td class="label">Project title:</td><td>${esc(p.projectTitle)}</td></tr><tr><td class="label">Project Manager</td><td>${esc(p.projectManager)}</td><td class="label">PO number:</td><td>${esc(p.poNumber)}</td></tr><tr><td class="label">From:</td><td colspan="3">${esc(p.from)}</td></tr><tr><td class="label">To:</td><td colspan="3">${esc(p.to)}</td></tr><tr><td class="label">Copy to:</td><td colspan="3">${esc(p.copyTo)}</td></tr></table>`;
- const photoGroups=[]; const allPhotos=r.photos||[]; const groupCount=Math.max(1,Math.ceil(allPhotos.length/4)); for(let g=0;g<groupCount;g++)photoGroups.push(allPhotos.slice(g*4,g*4+4));
+ const photoGroups=[]; const allPhotos=state.photos||[]; const groupCount=Math.max(1,Math.ceil(allPhotos.length/4)); for(let g=0;g<groupCount;g++)photoGroups.push(allPhotos.slice(g*4,g*4+4));
  const totalPages=2+Math.max(0,photoGroups.length-1);
  const header=`<div class="report-header official-header"><img src="${OFFICIAL_HEADER_IMAGE}" alt="Axess Daily Report Header"></div>`;
  const footer=n=>`<div class="report-footer">${n} of ${totalPages}</div>`;
@@ -2971,6 +3207,8 @@ function downloadBlob(blob,name){const a=document.createElement('a');const url=U
 
 const AXESS_SUPABASE_URL='https://fxuysqowifcdawuahapu.supabase.co';
 const AXESS_SUPABASE_KEY='sb_publishable_muUcg14erpuEtA2FWyuvmg_ir8zFje1';
+const AXESS_PHOTO_BUCKET='dpr-photos';
+const AXESS_PHOTO_SIGNED_URL_SECONDS=60*60*6;
 function setSyncBadge(text,live=false){const b=$('syncBadge');if(!b)return;b.textContent=text;b.className='badge '+(live?'live':'neutral')}
 function renderSync(){setSyncBadge(state.supabase?'Cloud Sync':'Offline',!!state.supabase)}
 function loadScriptOnce(src,globalName){return new Promise((resolve,reject)=>{if(globalName&&window[globalName])return resolve();const old=document.querySelector('script[data-dynamic-src="'+src+'"]');if(old){if(globalName&&window[globalName])return resolve();old.addEventListener('load',resolve,{once:true});old.addEventListener('error',reject,{once:true});return}const sc=document.createElement('script');sc.src=src;sc.async=true;sc.dataset.dynamicSrc=src;sc.onload=()=>resolve();sc.onerror=()=>reject(new Error('Online library could not be loaded'));document.head.appendChild(sc)})}
@@ -3108,9 +3346,13 @@ function setupRealtime(){
 
       if(state.current?.date===date){
         state.current=structuredClone(remote);
-        state.photos=structuredClone(state.current.photos||[]);
-        populateForm();
-        toast('DPR updated by another user');
+        state.photoRefs=structuredClone(state.current.photos||[]);
+        resolvePhotoRefs(state.photoRefs).then(urls=>{
+          state.photos=urls;
+          cachePhotosForDate(date,urls);
+          populateForm();
+          toast('DPR updated by another user');
+        });
       }
     })
     .subscribe();

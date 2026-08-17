@@ -381,6 +381,65 @@ input:focus,select:focus,textarea:focus{
 #printPdfBtn{white-space:nowrap}
 
 
+/* V16 — Location Progress Status */
+.location-progress-panel{grid-column:1/-1}
+.location-status-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.location-status-table th,.location-status-table td{border:1px solid #d7e0e1;padding:10px 12px;vertical-align:middle}
+.location-status-table th{background:#f4f8f8;color:#36575a;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+.location-status-table th:nth-child(1){width:24%}.location-status-table th:nth-child(2){width:16%}.location-status-table th:nth-child(3){width:14%}.location-status-table th:nth-child(4){width:12%}.location-status-table th:nth-child(5){width:13%}.location-status-table th:nth-child(6){width:21%}
+.location-status-table td.num{text-align:center;font-variant-numeric:tabular-nums}
+.location-status-table input{width:100%;box-sizing:border-box}
+.location-progress-badge{display:inline-flex;align-items:center;justify-content:center;min-width:88px;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800}
+.location-progress-badge.complete{background:#dcf7e7;color:#17653a;border:1px solid #a9e5c0}
+.location-progress-badge.in-progress{background:#fff2bf;color:#7a5b00;border:1px solid #ecd676}
+.location-progress-empty{padding:18px;text-align:center;color:#78888a}
+.report-location-status{border:1px solid #222;margin:0 0 2.2mm;padding:1.4mm 1.6mm;break-inside:avoid;page-break-inside:avoid}
+.report-location-status-title{color:#078e98;font-weight:700;margin:0 0 1mm}
+.location-status-report-table{margin:0!important;font-size:7.5pt;table-layout:fixed}
+.location-status-report-table th,.location-status-report-table td{padding:.5mm .65mm;text-align:center;overflow-wrap:anywhere}
+.location-status-report-table th:first-child,.location-status-report-table td:first-child{width:23%;text-align:left}
+.location-status-report-table th:nth-child(2),.location-status-report-table td:nth-child(2){width:16%}
+.location-status-report-table th:nth-child(3),.location-status-report-table td:nth-child(3){width:14%}
+.location-status-report-table th:nth-child(4),.location-status-report-table td:nth-child(4){width:12%}
+.location-status-report-table th:nth-child(5),.location-status-report-table td:nth-child(5){width:13%}
+.location-status-report-table th:nth-child(6),.location-status-report-table td:nth-child(6){width:22%;text-align:left}
+.report-status-text.complete{color:#17653a;font-weight:800;background:#dcf7e7}
+.report-status-text.in-progress{color:#7a5b00;font-weight:800;background:#fff2bf}
+.cumulative-progress-block{break-inside:avoid!important;page-break-inside:avoid!important;border-top:1px solid #222!important}
+/* V17 — Reliable cumulative-progress pagination for preview and downloaded PDF */
+.cumulative-progress-block{
+  break-inside:avoid!important;
+  page-break-inside:avoid!important;
+  break-before:auto!important;
+  page-break-before:auto!important;
+  border:1px solid #222!important;
+  border-top:1px solid #222!important;
+  margin:0!important;
+}
+.report-page.page2.cumulative-on-page2 .cumulative-progress-block{
+  margin:0 0 2mm!important;
+}
+.report-page.page2.cumulative-on-page2 .photos-box{
+  margin-top:0!important;
+}
+.report-page.page2.cumulative-on-page2 .photos-title{
+  margin-bottom:2mm!important;
+}
+.report-page.page2.cumulative-on-page2 .report-photo-cell{
+  height:29mm;
+}
+.report-page.page2.cumulative-on-page2 .report-section{
+  padding:.78mm 1.7mm;
+}
+.report-page.page2.cumulative-on-page2 .official-table{
+  font-size:7.75pt;
+}
+.report-page.page2.cumulative-on-page2 .official-table th,
+.report-page.page2.cumulative-on-page2 .official-table td{
+  padding:.42mm .65mm;
+}
+
+
 /* V13 — Professional official DPR output */
 .report-root{
   background:#d9dfe0;
@@ -549,23 +608,29 @@ input:focus,select:focus,textarea:focus{
   margin:0 0 3.2mm;
 }
 .report-photo-grid{
-  width:72%;
+  width:76%;
   margin:0 auto;
   display:grid;
-  grid-template-columns:1fr 1fr;
-  border:1px solid #222;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:0;
+  padding:0;
+  border:0;
+  background:#fff;
 }
 .report-photo-cell{
   box-sizing:border-box;
-  height:34mm;
-  border-right:1px solid #222;
-  border-bottom:1px solid #222;
+  height:36mm;
+  border:.25mm solid #d7d7d7;
+  padding:1mm;
   overflow:hidden;
-  background:#fafafa;
+  background:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
-.report-photo-cell:nth-child(2n){border-right:0}
-.report-photo-cell:nth-child(n+3){border-bottom:0}
-.report-photo-cell img{width:100%;height:100%;object-fit:cover}
+.report-photo-cell:nth-child(2n),
+.report-photo-cell:nth-child(n+3){border-right:.25mm solid #d7d7d7;border-bottom:.25mm solid #d7d7d7}
+.report-photo-cell img{display:block;width:100%;height:100%;object-fit:cover}
 .report-page.page2 .report-section{
   padding:1.05mm 2mm;
 }
@@ -1251,6 +1316,12 @@ input,textarea,select{
   background:transparent !important;
 }
 </style>
+
+<style id="report-photo-height-10pct-fix">
+/* Report-only adjustment: increase every report photo box height by exactly 10%. */
+.report-photo-cell{height:39.6mm;}
+.report-page.page2.cumulative-on-page2 .report-photo-cell{height:31.9mm;}
+</style>
 </head>
 <body>
 
@@ -1501,6 +1572,19 @@ input,textarea,select{
           </div>
         </div>
 
+        <div class="panel premium-section location-progress-panel">
+          <div class="panel-heading premium-heading">
+            <div class="heading-copy"><span class="section-kicker">LOCATION CONTROL</span><h2>Location Progress Status</h2></div>
+            <span class="section-note">Completed and active locations only</span>
+          </div>
+          <div class="table-wrap">
+            <table class="location-status-table">
+              <thead><tr><th>Locations</th><th>Cumulative Progress Area (m²)</th><th>Overall Area (m²)</th><th>Progress (%)</th><th>Status</th><th>Remarks</th></tr></thead>
+              <tbody id="locationProgressStatusBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="grid two-col">
           <div class="panel">
             <div class="panel-heading"><h2>Current Day Work Progress Photos</h2><span>4 default photo spaces • add more if required</span></div>
@@ -1669,7 +1753,7 @@ function persist(){
 }
 function todayISO(){const d=new Date(); const o=d.getTimezoneOffset(); return new Date(d.getTime()-o*60000).toISOString().slice(0,10)}
 function shiftDate(iso,days){const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)}
-function newReport(date){return {date,status:'draft',hse:'Correct PPE For the Task',onsite:'',general:'',surfacePrep:'WJ2 Standard',paintInspection:'N/A',planned:'',paintConsumption:'N/A',progress:[],environment:structuredClone(DEFAULT_ENV),team:structuredClone(state.teamMaster||DEFAULT_TEAM),crewHoursDaily:'',crewHoursCum:'',initialMobilization:"16 July'26",agreedClient:'Y',miscNotes:'',photos:[],lastSaved:null,dprUpdatedAt:null}}
+function newReport(date){return {date,status:'draft',hse:'Correct PPE For the Task',onsite:'',general:'',surfacePrep:'WJ2 Standard',paintInspection:'N/A',planned:'',paintConsumption:'N/A',progress:[],environment:structuredClone(DEFAULT_ENV),team:structuredClone(state.teamMaster||DEFAULT_TEAM),crewHoursDaily:'',crewHoursCum:'',initialMobilization:"16 July'26",agreedClient:'Y',miscNotes:'',locationRemarks:{},photos:[],lastSaved:null,dprUpdatedAt:null}}
 function toast(msg){$('toast').textContent=msg;$('toast').classList.remove('hidden');setTimeout(()=>$('toast').classList.add('hidden'),2600)}
 async function runAction(fn,label){try{const out=fn();if(out&&typeof out.then==='function')await out}catch(e){console.error(label,e);toast(label+' failed: '+(e&&e.message?e.message:'Unknown error'))}}
 function fmtDate(iso){if(!iso)return'';const [y,m,d]=iso.split('-');return `${d}.${m}.${y}`}
@@ -2294,8 +2378,8 @@ async function switchReportDate(date){
   clearPdfDownloadLink();
   await loadDate(date);
 }
-function populateForm(){const r=state.current;['hse','onsite','general','surfacePrep','paintInspection','planned','paintConsumption','crewHoursDaily','initialMobilization','agreedClient','miscNotes'].forEach(id=>$(id).value=r[id]??'');refreshCrewHours();$('dateStatus').textContent=r.lastSaved?'Saved':'New';$('dateStatus').className='status-pill draft';$('lastSaved').textContent=r.lastSaved?'Last saved: '+new Date(r.lastSaved).toLocaleString():'';renderProgress();renderPhotos();renderEnv();renderTeam();updateDprConfirmationUI();}
-function captureForm(){if(!state.current)return;['hse','onsite','general','surfacePrep','paintInspection','planned','paintConsumption','crewHoursDaily','initialMobilization','agreedClient','miscNotes'].forEach(id=>state.current[id]=$(id).value);state.current.crewHoursCum=String(cumulativeCrewHoursForDate(state.current.date,state.current.crewHoursDaily));state.current.photos=structuredClone(state.photoRefs||[])}
+function populateForm(){const r=state.current;['hse','onsite','general','surfacePrep','paintInspection','planned','paintConsumption','crewHoursDaily','initialMobilization','agreedClient','miscNotes'].forEach(id=>$(id).value=r[id]??'');refreshCrewHours();$('dateStatus').textContent=r.lastSaved?'Saved':'New';$('dateStatus').className='status-pill draft';$('lastSaved').textContent=r.lastSaved?'Last saved: '+new Date(r.lastSaved).toLocaleString():'';renderProgress();renderLocationProgressStatus();renderPhotos();renderEnv();renderTeam();updateDprConfirmationUI();}
+function captureForm(){if(!state.current)return;state.current.locationRemarks=state.current.locationRemarks||{};document.querySelectorAll('[data-location-remark]').forEach(x=>state.current.locationRemarks[x.dataset.locationRemark]=x.value);['hse','onsite','general','surfacePrep','paintInspection','planned','paintConsumption','crewHoursDaily','initialMobilization','agreedClient','miscNotes'].forEach(id=>state.current[id]=$(id).value);state.current.crewHoursCum=String(cumulativeCrewHoursForDate(state.current.date,state.current.crewHoursDaily));state.current.photos=structuredClone(state.photoRefs||[])}
 function autoSave(show=false){
   captureForm();
   if(state.current.dprUpdatedAt){
@@ -2382,6 +2466,29 @@ function renderProgress(){
  updateCalc()
 }
 function locationArea(id){return state.locations.find(l=>l.id===id)?.area||0}
+function getLocationProgressStatusRows(date=state.current?.date,includeCurrentUnsaved=true){
+ const cum=getCumulative(date,includeCurrentUnsaved);
+ return state.locations.map(loc=>{
+   const st=cum.byLocation[loc.id]||{surface:0,stripe:0,second:0,final:0};
+   const overall=num(loc.area);
+   const cumulative=WEIGHTS.reduce((sum,w)=>sum+Math.min(num(st[w.key]),overall||num(st[w.key]))*w.weight,0);
+   const pct=overall?Math.min(100,cumulative/overall*100):0;
+   return {id:loc.id,name:loc.name,overall,cumulative,pct,status:pct>=99.995?'Completed':'In Progress'};
+ }).filter(x=>x.pct>0);
+}
+function renderLocationProgressStatus(){
+ const body=$('locationProgressStatusBody'); if(!body||!state.current)return;
+ state.current.locationRemarks=state.current.locationRemarks||{};
+ const rows=getLocationProgressStatusRows(state.current.date,true);
+ body.innerHTML=rows.length?rows.map(x=>`<tr><td>${esc(x.name)}</td><td class="num">${displayNum(x.cumulative)}</td><td class="num">${displayNum(x.overall)}</td><td class="num"><b>${x.pct.toFixed(2)}%</b></td><td class="num"><span class="location-progress-badge ${x.status==='Completed'?'complete':'in-progress'}">${x.status}</span></td><td><input type="text" data-location-remark="${esc(x.id)}" value="${esc(state.current.locationRemarks[x.id]||'')}" placeholder="Enter remarks"></td></tr>`).join(''):`<tr><td colspan="6" class="location-progress-empty">No completed or in-progress locations for this date.</td></tr>`;
+ body.querySelectorAll('[data-location-remark]').forEach(x=>x.oninput=()=>{state.current.locationRemarks[x.dataset.locationRemark]=x.value;autoSave(false)});
+}
+function locationProgressStatusReportTable(r){
+ const remarks=r.locationRemarks||{};
+ const rows=getLocationProgressStatusRows(r.date,true);
+ if(!rows.length)return `<div class="report-location-status"><div class="report-location-status-title">Location Progress Status</div><div class="no-data">No completed or in-progress locations.</div></div>`;
+ return `<div class="report-location-status"><div class="report-location-status-title">Location Progress Status</div><table class="official-table location-status-report-table"><thead><tr><th>Locations</th><th>Cumulative Progress Area (m²)</th><th>Overall Area (m²)</th><th>Progress (%)</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.name)}</td><td>${displayNum(x.cumulative)}</td><td>${displayNum(x.overall)}</td><td>${x.pct.toFixed(2)}%</td><td class="report-status-text ${x.status==='Completed'?'complete':'in-progress'}">${x.status}</td><td>${esc(remarks[x.id]||'')}</td></tr>`).join('')}</tbody></table></div>`;
+}
 function updateCalc(){
  state.current.progress.forEach((p,i)=>{
    const c=currentCumulativeForProgress(p); let cumulativeWeighted=0;
@@ -2393,7 +2500,7 @@ function updateCalc(){
  });
  // Overall cumulative weighted progress across every location recorded up to the selected date.
  const cum=getCumulative(state.current.date,true);$('cumWeighted').textContent=displayNum(cum.weighted)+' m²';
- const projectArea=state.locations.reduce((s,l)=>s+num(l.area),0);$('overallPercent').textContent=(projectArea?cum.weighted/projectArea*100:0).toFixed(2)+'%'
+ const projectArea=state.locations.reduce((s,l)=>s+num(l.area),0);$('overallPercent').textContent=(projectArea?cum.weighted/projectArea*100:0).toFixed(2)+'%';renderLocationProgressStatus()
 }
 function getCumulative(date, includeCurrentUnsaved=false){const byStage={surface:0,stripe:0,second:0,final:0};const byLocation={}; const reports={...state.reports};if(includeCurrentUnsaved){captureForm();reports[state.current.date]=state.current}Object.values(reports).filter(r=>r.date<=date).forEach(r=>(r.progress||[]).forEach(p=>{const loc=p.locationId;if(!byLocation[loc])byLocation[loc]={surface:0,stripe:0,second:0,final:0};WEIGHTS.forEach(w=>{byLocation[loc][w.key]+=num(p[w.key])})}));Object.entries(byLocation).forEach(([loc,stages])=>{const cap=locationArea(loc);WEIGHTS.forEach(w=>{const v=Math.min(stages[w.key],cap||stages[w.key]);byStage[w.key]+=v})});const weighted=WEIGHTS.reduce((s,w)=>s+byStage[w.key]*w.weight,0);return {byStage,weighted,byLocation,locations:Object.keys(byLocation)}}
 
@@ -2921,7 +3028,7 @@ function buildReportHTML(){
  const header=`<div class="report-header official-header"><img src="${OFFICIAL_HEADER_IMAGE}" alt="Axess Daily Report Header"></div>`;
  const footer=n=>`<div class="report-footer">${n} of ${totalPages}</div>`;
  const currentDayProgress=dayLocs.length?dayLocs.map(x=>`<div class="progress-label">${esc(x.name)}</div>${progressTable(x.stage,'Daily Area Covered (m²)',x.cumulativeStage)}`).join(''):'<div>N/A</div>';
- const page1=`<div class="report-page page1">${header}${meta}<div class="report-date-row">${fmtDate(r.date)}</div>${reportBullets('HSE and QA',r.hse)}${reportBullets('Onsite Discussion',r.onsite)}${reportBullets('General Activities',r.general)}${reportBullets('Surface Preparation',r.surfacePrep)}${reportBullets('Paint Application / Inspection'+(dayLocNames.length?' - '+dayLocNames.join(' + '):''),r.paintInspection)}<div class="report-section"><div class="daily-title">Daily Progress</div><div class="progress-label">Current Day Progress</div>${currentDayProgress}<div class="progress-label">Cumulative Progress - Total (All Locations)</div>${progressTable(cum.byStage,'Cumulative Area Covered (m²)')}</div>${footer(1)}</div>`;
+ const locationStatusSection=locationProgressStatusReportTable(r); const page1=`<div class="report-page page1">${header}${meta}${locationStatusSection}<div class="report-date-row">${fmtDate(r.date)}</div>${reportBullets('HSE and QA',r.hse)}${reportBullets('Onsite Discussion',r.onsite)}${reportBullets('General Activities',r.general)}${reportBullets('Surface Preparation',r.surfacePrep)}${reportBullets('Paint Application / Inspection'+(dayLocNames.length?' - '+dayLocNames.join(' + '):''),r.paintInspection)}<div class="report-section daily-progress-block"><div class="daily-title">Daily Progress</div><div class="progress-label">Current Day Progress</div>${currentDayProgress}</div><div class="report-section cumulative-progress-block"><div class="progress-label">Cumulative Progress - Total (All Locations)</div>${progressTable(cum.byStage,'Cumulative Area Covered (m²)')}</div>${footer(1)}</div>`;
  const firstGroup=photoGroups[0]||[]; const firstPhotos=Array.from({length:4},(_,i)=>`<div class="report-photo-cell">${firstGroup[i]?`<img src="${firstGroup[i]}">`:''}</div>`).join('');
  const envRows=(r.environment||[]).map(e=>`<tr><td>${esc(e.task)}</td><td class="num">${esc(e.surface)}</td><td class="num">${esc(e.ambient)}</td><td class="num">${esc(e.rh)}</td><td class="num">${esc(e.time)}</td></tr>`).join('');
  const teamRows=(r.team||[]).map(e=>`<tr><td>${esc(e.name)}</td><td class="num">${esc(fmtDateDash(e.mobilized))}</td><td class="num">${esc(e.rotation)}</td><td class="num">${esc(teamDays(e))}</td><td class="num">${esc(e.demob)}</td></tr>`).join('');
@@ -2930,25 +3037,76 @@ function buildReportHTML(){
  return page1+page2+extra
 }
 
+function reportBlockFitsAboveFooter(page,block){
+  if(!page||!block)return true;
+  const footer=page.querySelector('.report-footer');
+  const pageRect=page.getBoundingClientRect();
+  const blockRect=block.getBoundingClientRect();
+  const footerTop=footer?footer.getBoundingClientRect().top:(pageRect.bottom-12);
+  return blockRect.bottom<=footerTop-6;
+}
+function reportPageFits(page){
+  if(!page)return true;
+  const footer=page.querySelector('.report-footer');
+  const footerTop=footer?footer.getBoundingClientRect().top:page.getBoundingClientRect().bottom;
+  const children=[...page.children].filter(el=>!el.classList.contains('report-footer'));
+  const bottom=children.reduce((m,el)=>Math.max(m,el.getBoundingClientRect().bottom),page.getBoundingClientRect().top);
+  return bottom<=footerTop-5;
+}
 function fitReportPages(root){
   if(!root)return;
+  const page1=root.querySelector('.report-page.page1'),page2=root.querySelector('.report-page.page2');
+  if(page1&&page2){
+    const cumulative=page1.querySelector('.cumulative-progress-block')||page2.querySelector('.cumulative-progress-block');
+    const daily=page1.querySelector('.daily-progress-block');
+    page1.classList.remove('report-compact','report-ultra');
+    page2.classList.remove('report-compact','report-ultra','cumulative-on-page2');
+
+    /* Start from the preferred first-page position on every layout pass. */
+    if(cumulative&&daily&&cumulative.parentElement!==page1)daily.insertAdjacentElement('afterend',cumulative);
+    if(cumulative&&daily&&cumulative.previousElementSibling!==daily)daily.insertAdjacentElement('afterend',cumulative);
+
+    /* Use the real footer boundary, not scrollHeight. This prevents clipping
+       when the fixed A4 page uses overflow:hidden. */
+    if(cumulative&&!reportBlockFitsAboveFooter(page1,cumulative)){
+      const page2Header=page2.querySelector('.report-header.official-header');
+      if(page2Header)page2Header.insertAdjacentElement('afterend',cumulative);
+      else page2.insertBefore(cumulative,page2.firstChild);
+      page2.classList.add('cumulative-on-page2');
+    }
+  }
+
   const pages=[...root.querySelectorAll('.report-page')];
   pages.forEach(page=>{
     page.classList.remove('report-compact','report-ultra');
-    // Allow layout to settle before measuring.
-    const available=page.clientHeight;
-    if(page.scrollHeight>available+2)page.classList.add('report-compact');
-    if(page.scrollHeight>available+2)page.classList.add('report-ultra');
+    if(!reportPageFits(page))page.classList.add('report-compact');
+    if(!reportPageFits(page))page.classList.add('report-ultra');
   });
+}
+function waitForReportAssets(root){
+  if(!root)return Promise.resolve();
+  const imgs=[...root.querySelectorAll('img')];
+  if(!imgs.length)return Promise.resolve();
+  return Promise.all(imgs.map(img=>{
+    if(img.complete&&img.naturalWidth>0)return Promise.resolve();
+    return new Promise(resolve=>{
+      const done=()=>resolve();
+      img.addEventListener('load',done,{once:true});
+      img.addEventListener('error',done,{once:true});
+      setTimeout(done,2500);
+    });
+  }));
 }
 
 function showPreview(finalMode=true){
  saveCurrent(state.current.status||'draft',false);
  $('previewTitle').textContent='DPR Preview';
- $('reportRoot').innerHTML=buildReportHTML();
+ const root=$('reportRoot');
+ root.innerHTML=buildReportHTML();
  $('reportModal').classList.remove('hidden');
  requestAnimationFrame(()=>{
-   fitReportPages($('reportRoot'));
+   fitReportPages(root);
+   waitForReportAssets(root).then(()=>requestAnimationFrame(()=>fitReportPages(root)));
    $('reportModal').scrollTo({top:0,behavior:'instant'});
  });
 }
@@ -3317,7 +3475,45 @@ function printReportToPDF(){
   background:transparent !important;
 }
 </style></head><body>${reportHTML}<script>
-    window.addEventListener('load',()=>setTimeout(()=>window.print(),650));
+    function popupBlockFits(page,block){
+      const footer=page&&page.querySelector('.report-footer');
+      if(!page||!block)return true;
+      const limit=footer?footer.getBoundingClientRect().top:page.getBoundingClientRect().bottom;
+      return block.getBoundingClientRect().bottom<=limit-6;
+    }
+    function popupPageFits(page){
+      if(!page)return true;
+      const footer=page.querySelector('.report-footer');
+      const limit=footer?footer.getBoundingClientRect().top:page.getBoundingClientRect().bottom;
+      const kids=[...page.children].filter(x=>!x.classList.contains('report-footer'));
+      const bottom=kids.reduce((m,x)=>Math.max(m,x.getBoundingClientRect().bottom),page.getBoundingClientRect().top);
+      return bottom<=limit-5;
+    }
+    function popupFit(){
+      const p1=document.querySelector('.report-page.page1'),p2=document.querySelector('.report-page.page2');
+      if(!p1||!p2)return;
+      const cum=p1.querySelector('.cumulative-progress-block')||p2.querySelector('.cumulative-progress-block');
+      const daily=p1.querySelector('.daily-progress-block');
+      p1.classList.remove('report-compact','report-ultra');
+      p2.classList.remove('report-compact','report-ultra','cumulative-on-page2');
+      if(cum&&daily&&cum.parentElement!==p1)daily.insertAdjacentElement('afterend',cum);
+      if(cum&&daily&&cum.previousElementSibling!==daily)daily.insertAdjacentElement('afterend',cum);
+      if(cum&&!popupBlockFits(p1,cum)){
+        const h=p2.querySelector('.report-header.official-header');
+        if(h)h.insertAdjacentElement('afterend',cum);
+        p2.classList.add('cumulative-on-page2');
+      }
+      [p1,p2].forEach(p=>{
+        if(!popupPageFits(p))p.classList.add('report-compact');
+        if(!popupPageFits(p))p.classList.add('report-ultra');
+      });
+    }
+    window.addEventListener('load',()=>{
+      const imgs=[...document.images];
+      Promise.all(imgs.map(img=>img.complete?Promise.resolve():new Promise(r=>{img.onload=r;img.onerror=r;setTimeout(r,2500)}))).then(()=>{
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{popupFit();setTimeout(()=>window.print(),250)}));
+      });
+    });
   <\/script></body></html>`);
   w.document.close();
   toast('Print dialog opened. Choose “Save as PDF” to download the report.');
@@ -3381,9 +3577,14 @@ async function generatePDF(){
   host.style.cssText='position:fixed;left:-10000px;top:0;width:210mm;background:#fff;z-index:-1;pointer-events:none';
   host.innerHTML=buildReportHTML();
   document.body.appendChild(host);
-  fitReportPages(host);
 
   try{
+    /* Match the visible preview: wait for the header/photos to have their final
+       rendered dimensions, then run the same pagination routine. */
+    await waitForReportAssets(host);
+    fitReportPages(host);
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    fitReportPages(host);
     const pages=[...host.querySelectorAll('.report-page')];
     if(!pages.length)throw new Error('No report pages were created');
 
@@ -3427,7 +3628,7 @@ async function generatePDF(){
     });
   }
 }
-function extractReportCSS(){return [...document.styleSheets].map(s=>{try{return [...s.cssRules].filter(r=>r.cssText.includes('report-')||r.cssText.includes('official-table')||r.cssText.includes('meta-table')||r.cssText.includes('misc-')||r.cssText.includes('photos-')||r.cssText.includes('progress-label')||r.cssText.includes('daily-title')||r.cssText.includes('subhead')||r.cssText.includes('page-break')).map(r=>r.cssText).join('\n')}catch{return''}}).join('\n')}
+function extractReportCSS(){return [...document.styleSheets].map(s=>{try{return [...s.cssRules].filter(r=>r.cssText.includes('report-')||r.cssText.includes('official-table')||r.cssText.includes('meta-table')||r.cssText.includes('misc-')||r.cssText.includes('photos-')||r.cssText.includes('progress-label')||r.cssText.includes('daily-title')||r.cssText.includes('subhead')||r.cssText.includes('page-break')||r.cssText.includes('location-status')||r.cssText.includes('location-progress')||r.cssText.includes('cumulative-progress')).map(r=>r.cssText).join('\n')}catch{return''}}).join('\n')}
 function downloadBlob(blob,name){const a=document.createElement('a');const url=URL.createObjectURL(blob);a.href=url;a.download=name;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1500)}
 
 const AXESS_SUPABASE_URL='https://fxuysqowifcdawuahapu.supabase.co';

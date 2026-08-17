@@ -916,6 +916,26 @@ input:focus,select:focus,textarea:focus{
 .auth-user-pill.show{display:flex}
 .auth-user-pill span{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .auth-user-pill button{border:0;background:#eef6f7;border-radius:999px;padding:6px 10px;cursor:pointer;font-weight:800;color:#36565c;white-space:nowrap}
+.activity-notify{position:relative;display:none}
+.activity-notify.show{display:block}
+.activity-bell{position:relative;width:38px;height:38px;border:1px solid #d6e5e7;border-radius:50%;background:#fff;cursor:pointer;display:grid;place-items:center;color:#36565c;font-size:19px;box-shadow:none}
+.activity-bell:hover{background:#f4f9fa;border-color:#bcd8dc}
+.activity-count{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#009aa6;color:#fff;font-size:10px;font-weight:900;display:none;align-items:center;justify-content:center;border:2px solid #fff;box-sizing:border-box}
+.activity-count.show{display:flex}
+.activity-panel{position:absolute;right:0;top:46px;width:min(430px,calc(100vw - 32px));max-height:470px;background:#fff;border:1px solid #d6e5e7;border-radius:16px;box-shadow:0 18px 50px rgba(19,54,59,.18);z-index:10020;display:none;overflow:hidden}
+.activity-panel.show{display:block}
+.activity-panel-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e6eeee;background:#fbfdfd}
+.activity-panel-head strong{font-size:14px;color:#34464a}
+.activity-panel-head button{border:0;background:transparent;color:#637b81;cursor:pointer;font-size:18px;padding:2px 5px}
+.activity-list{max-height:410px;overflow:auto;padding:8px}
+.activity-empty{padding:28px 18px;text-align:center;color:#71868b;font-size:13px}
+.activity-item{display:grid;grid-template-columns:34px 1fr;gap:10px;padding:11px 9px;border-bottom:1px solid #edf2f3}
+.activity-item:last-child{border-bottom:0}
+.activity-icon{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#eef8f9;color:#008c98;font-weight:900;font-size:14px}
+.activity-item.logout .activity-icon{background:#f5f6f7;color:#6b7477}
+.activity-name{font-size:13px;font-weight:900;color:#34464a;line-height:1.25}
+.activity-meta{font-size:11px;color:#71868b;margin-top:3px;line-height:1.45}
+@media(max-width:720px){.activity-panel{position:fixed;right:12px;left:12px;top:70px;width:auto;max-height:70vh}.activity-list{max-height:calc(70vh - 52px)}}
 .top-actions{flex-wrap:wrap;justify-content:flex-end}
 @media (max-width:760px){
   .topbar{align-items:flex-start;gap:14px;flex-direction:column}
@@ -1284,6 +1304,13 @@ input,textarea,select{
         </div>
         <div class="top-actions">
           <span id="syncBadge" class="badge neutral">Connecting…</span>
+          <div id="activityNotify" class="activity-notify">
+            <button id="activityBellBtn" class="activity-bell" type="button" title="Login / Logout Activity" aria-label="Login and logout activity">🔔<span id="activityCount" class="activity-count"></span></button>
+            <div id="activityPanel" class="activity-panel" role="dialog" aria-label="Login and logout activity history">
+              <div class="activity-panel-head"><strong>Login / Logout Activity</strong><button id="activityCloseBtn" type="button" aria-label="Close">×</button></div>
+              <div id="activityList" class="activity-list"></div>
+            </div>
+          </div>
           <div id="authUserPill" class="auth-user-pill"><span id="authUserEmail"></span><button id="authLogoutBtn" type="button">Sign out</button></div>
         </div>
       </header>
@@ -3300,17 +3327,107 @@ async function ensureSupabaseClient(){
   return state.supabase;
 }
 
+const AXESS_ACTIVITY_KEY='axess_login_logout_activity_v1';
+const AXESS_ACTIVITY_MAX=500;
+let currentAuthIdentity=null;
+let activityUnread=0;
+
+function activityDisplayName(user,email=''){
+  const m=user?.user_metadata||{};
+  const explicit=(m.full_name||m.name||m.display_name||'').trim();
+  if(explicit)return explicit;
+  const local=(email||user?.email||'').split('@')[0].replace(/[._-]+/g,' ').trim();
+  return local?local.replace(/\b\w/g,c=>c.toUpperCase()):(email||'Axess User');
+}
+function loadActivityHistory(){
+  try{
+    const x=JSON.parse(localStorage.getItem(AXESS_ACTIVITY_KEY)||'[]');
+    return Array.isArray(x)?x:[];
+  }catch{return []}
+}
+function saveActivityHistory(rows){
+  try{localStorage.setItem(AXESS_ACTIVITY_KEY,JSON.stringify(rows.slice(0,AXESS_ACTIVITY_MAX)))}catch(e){console.warn('Activity history local save failed',e)}
+}
+function formatActivityStamp(iso){
+  const d=new Date(iso);
+  if(Number.isNaN(d.getTime()))return {date:'',time:''};
+  return {
+    date:d.toLocaleDateString(undefined,{year:'numeric',month:'short',day:'2-digit'}),
+    time:d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'})
+  };
+}
+function renderActivityHistory(){
+  const list=$('activityList'); if(!list)return;
+  const rows=loadActivityHistory();
+  if(!rows.length){list.innerHTML='<div class="activity-empty">No login or logout activity recorded yet.</div>';return;}
+  list.innerHTML=rows.map(r=>{
+    const st=formatActivityStamp(r.timestamp);
+    const kind=r.type==='logout'?'logout':'login';
+    const action=kind==='login'?'Logged in':'Logged out';
+    return `<div class="activity-item ${kind}"><div class="activity-icon">${kind==='login'?'↪':'↩'}</div><div><div class="activity-name">${esc(r.name||r.email||'Axess User')} · ${action}</div><div class="activity-meta">${esc(st.date)} at ${esc(st.time)}${r.email?`<br>${esc(r.email)}`:''}</div></div></div>`;
+  }).join('');
+}
+function updateActivityBadge(){
+  const c=$('activityCount'); if(!c)return;
+  if(activityUnread>0){c.textContent=activityUnread>99?'99+':String(activityUnread);c.classList.add('show')}else{c.textContent='';c.classList.remove('show')}
+}
+async function recordAuthActivity(type,userOrIdentity){
+  const now=new Date().toISOString();
+  const email=(userOrIdentity?.email||'').toLowerCase();
+  const name=userOrIdentity?.name||activityDisplayName(userOrIdentity,email);
+  const row={id:(crypto?.randomUUID?.()||('act_'+Date.now()+'_'+Math.random().toString(36).slice(2))),type,email,name,timestamp:now};
+  const rows=loadActivityHistory(); rows.unshift(row); saveActivityHistory(rows);
+  activityUnread++; updateActivityBadge(); renderActivityHistory();
+  // Cloud audit storage is attempted when an axess_auth_activity table is available.
+  // Local history remains the durable fallback and is isolated from all DPR/report data.
+  try{
+    const client=state.supabase||await ensureSupabaseClient();
+    const {error}=await client.from('axess_auth_activity').insert({activity_id:row.id,user_email:email,user_name:name,activity_type:type,activity_time:now});
+    if(error && !String(error.message||'').toLowerCase().includes('could not find')) console.warn('Cloud activity log save failed',error.message||error);
+  }catch(e){console.warn('Cloud activity log unavailable; local history retained',e)}
+  return row;
+}
+async function syncCloudActivityHistory(){
+  try{
+    const client=state.supabase||await ensureSupabaseClient();
+    const {data,error}=await client.from('axess_auth_activity').select('activity_id,user_email,user_name,activity_type,activity_time').order('activity_time',{ascending:false}).limit(500);
+    if(error)return;
+    const local=loadActivityHistory();
+    const byId=new Map(local.map(r=>[r.id,r]));
+    (data||[]).forEach(r=>{
+      const id=r.activity_id||('cloud_'+r.activity_time+'_'+r.user_email+'_'+r.activity_type);
+      byId.set(id,{id,type:r.activity_type,email:r.user_email||'',name:r.user_name||'',timestamp:r.activity_time});
+    });
+    const merged=[...byId.values()].sort((a,b)=>String(b.timestamp).localeCompare(String(a.timestamp))).slice(0,AXESS_ACTIVITY_MAX);
+    saveActivityHistory(merged);
+    renderActivityHistory();
+  }catch{}
+}
+function setCurrentAuthIdentity(user,email){
+  currentAuthIdentity={email:(email||user?.email||'').toLowerCase(),name:activityDisplayName(user,email)};
+}
+function showActivityTools(show){
+  $('activityNotify')?.classList.toggle('show',!!show);
+  if(!show)$('activityPanel')?.classList.remove('show');
+}
+
 function showAuthGate(message=''){
   $('authGate')?.classList.remove('hidden');
   $('authUserPill')?.classList.remove('show');
+  showActivityTools(false);
   if($('authError')) $('authError').textContent=message||'';
   setSyncBadge('Sign in required');
 }
 
-function showAuthenticatedUI(email){
+function showAuthenticatedUI(email,user=null){
   $('authGate')?.classList.add('hidden');
   if($('authUserEmail')) $('authUserEmail').textContent=email;
   $('authUserPill')?.classList.add('show');
+  showActivityTools(true);
+  setCurrentAuthIdentity(user,email);
+  renderActivityHistory();
+  updateActivityBadge();
+  syncCloudActivityHistory();
 }
 
 async function loadCloudReports(silent=false){
@@ -3333,7 +3450,7 @@ async function initAuth(){
     const {data:{session}}=await client.auth.getSession();
     const email=(session?.user?.email||'').toLowerCase();
     if(session && AXESS_ALLOWED_EMAILS.has(email)){
-      showAuthenticatedUI(email);
+      showAuthenticatedUI(email,session?.user);
       await loadCloudReports(true);
     }else{
       if(session && !AXESS_ALLOWED_EMAILS.has(email)) await client.auth.signOut();
@@ -3347,7 +3464,7 @@ async function initAuth(){
         showAuthGate('This account is not authorized for the Axess DPR.');
         return;
       }
-      showAuthenticatedUI(e);
+      showAuthenticatedUI(e,session2?.user);
       try{await loadCloudReports(true)}catch{}
     });
   }catch(e){
@@ -3521,7 +3638,8 @@ if(authForm) authForm.addEventListener('submit',async ev=>{
       await client.auth.signOut();
       throw new Error('This account is not authorized for the Axess DPR.');
     }
-    showAuthenticatedUI(signedEmail);
+    showAuthenticatedUI(signedEmail,data?.user);
+    await recordAuthActivity('login',data?.user||{email:signedEmail,name:activityDisplayName(null,signedEmail)});
     await loadCloudReports(false);
     if($('authPassword')) $('authPassword').value='';
   }catch(e){
@@ -3534,8 +3652,24 @@ if(authForm) authForm.addEventListener('submit',async ev=>{
 
 const authLogoutBtn=$('authLogoutBtn');
 if(authLogoutBtn) authLogoutBtn.addEventListener('click',async()=>{
+  const identity=currentAuthIdentity||{email:($('authUserEmail')?.textContent||'').trim().toLowerCase()};
+  try{await recordAuthActivity('logout',identity)}catch{}
   try{const client=await ensureSupabaseClient();await client.auth.signOut()}catch{}
+  currentAuthIdentity=null;
   showAuthGate();
+});
+
+const activityBellBtn=$('activityBellBtn');
+if(activityBellBtn) activityBellBtn.addEventListener('click',ev=>{
+  ev.stopPropagation();
+  const panel=$('activityPanel'); if(!panel)return;
+  const opening=!panel.classList.contains('show');
+  panel.classList.toggle('show',opening);
+  if(opening){activityUnread=0;updateActivityBadge();renderActivityHistory()}
+});
+$('activityCloseBtn')?.addEventListener('click',()=>{$('activityPanel')?.classList.remove('show')});
+document.addEventListener('click',ev=>{
+  const n=$('activityNotify'); if(n&& !n.contains(ev.target))$('activityPanel')?.classList.remove('show');
 });
 
 initAuth();

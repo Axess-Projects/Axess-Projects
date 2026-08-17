@@ -368,6 +368,12 @@ input:focus,select:focus,textarea:focus{
   font-weight:750;
   color:#294b4e;
 }
+#teamBody input[data-team="demob"]{
+  background:linear-gradient(180deg,#ffffff,#f6fbfb);
+  border-color:#b8d3d5;
+  font-weight:750;
+  color:#294b4e;
+}
 #previewPdfBtn,#pdfBtn{
   background:linear-gradient(135deg,#07838c 0%,#00a0aa 100%);
   box-shadow:0 8px 20px rgba(0,145,155,.18);
@@ -1399,7 +1405,7 @@ input,textarea,select{
               <span id="dashProjectDaysNote">from Initial Crew Mobilization • excludes 04–10 Aug 2026</span>
               <div class="project-days-breakdown">
                 <span>Initial Mobilization</span><b id="dashInitialMobilization">—</b>
-                <span>Non-Productive Days</span><b>7 days</b>
+                <span>Non-Productive Days</span><b id="dashNonProductiveDays">7 days</b>
               </div>
             </div>
             <div class="crew-summary-tile">
@@ -1606,10 +1612,10 @@ const DEFAULT_LOCATIONS = [
 ].map((x,i)=>({id:'loc_'+(i+1),name:x[0],area:x[1]}));
 const DEFAULT_ENV = ['Surface Preparation','Stripe Coat','Painting - 1st coat','Painting - 2nd coat','Painting - Top coat'].map(task=>({task,surface:'',ambient:'',rh:'',time:''}));
 const DEFAULT_TEAM = [
- {name:'Gevea Johnson - NACE Coating Inspector L2',mobilized:'2026-08-11',rotation:'2nd',days:'',demob:'TBD'},
- {name:'Ronaldo Schmitz - UHP Mechanic',mobilized:'2026-07-30',rotation:'1st',days:'',demob:'TBD'},
- {name:'Adrian Oliveros - UHP Blaster/Painter',mobilized:'2026-08-11',rotation:'2nd',days:'',demob:'TBD'},
- {name:'Jesus Jiminez - UHP Blaster/Painter',mobilized:'2026-08-11',rotation:'2nd',days:'',demob:'TBD'}
+ {crewId:'crew_gevea',name:'Gevea Johnson - NACE Coating Inspector L2',mobilized:'2026-08-11',rotation:'2nd',days:'',demob:'TBD',activityHistory:[{mobilized:'2026-07-16',demobilized:'2026-08-04'},{mobilized:'2026-08-11',demobilized:''}]},
+ {crewId:'crew_ronaldo',name:'Ronaldo Schmitz - UHP Mechanic',mobilized:'2026-07-30',rotation:'1st',days:'',demob:'TBD',activityHistory:[{mobilized:'2026-07-30',demobilized:''}]},
+ {crewId:'crew_adrian',name:'Adrian Oliveros - UHP Blaster/Painter',mobilized:'2026-08-11',rotation:'2nd',days:'',demob:'TBD',activityHistory:[{mobilized:'2026-07-16',demobilized:'2026-08-04'},{mobilized:'2026-08-11',demobilized:''}]},
+ {crewId:'crew_jesus',name:'Jesus Jiminez - UHP Blaster/Painter',mobilized:'2026-08-11',rotation:'2nd',days:'',demob:'TBD',activityHistory:[{mobilized:'2026-07-16',demobilized:'2026-08-04'},{mobilized:'2026-08-11',demobilized:''}]}
 ];
 let state = {
  project: loadJSON('axess_project', DEFAULT_PROJECT),
@@ -1695,6 +1701,8 @@ function refreshCrewHours(){
 
 
 function init(){
+ ensureTeamMaster();
+ persist();
  document.querySelectorAll('.nav-btn').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
  $('reportDate').value=todayISO();
  $('reportDate').onchange=()=>switchReportDate($('reportDate').value);
@@ -1704,7 +1712,7 @@ function init(){
  $('todayDate').onclick=()=>switchReportDate(todayISO());
  $('addProgress').onclick=()=>{state.current.progress.push(blankProgress());renderProgress();autoSave(false)};
  $('addEnv').onclick=()=>{state.current.environment.push({task:'',surface:'',ambient:'',rh:'',time:''});renderEnv()};
- $('addTeam').onclick=()=>{const row={name:'',mobilized:'',rotation:'',days:'',daysManual:false,demob:'TBD'};state.current.team.push(structuredClone(row));state.teamMaster.push(structuredClone(row));persist();renderTeam()};
+ $('addTeam').onclick=()=>{const row={crewId:'crew_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),name:'',mobilized:'',rotation:'',days:'',daysManual:false,demob:'TBD',activityHistory:[]};state.current.team.push(structuredClone(row));state.teamMaster.push(structuredClone(row));persist();renderTeam()};
  $('addPhotos').onclick=()=>$('photoInput').click(); $('photoInput').onchange=handlePhotos;
  $('updateDprBtn').onclick=()=>runAction(markCurrentDprUpdated,'Update DPR');
  $('quickPreviewBtn').onclick=()=>runAction(async()=>{await refreshCurrentPhotoUrls();showPreview(false)},'Preview'); $('closePreview').onclick=()=>$('reportModal').classList.add('hidden');
@@ -1922,19 +1930,102 @@ function overviewCrewKey(name){
   return '';
 }
 
-function overviewCrewInitialMobilization(e){
-  const key=overviewCrewKey(e?.name);
-  return OVERVIEW_CREW_INITIAL_MOBILIZATION[key]||e?.mobilized||'';
+function defaultCrewActivityHistory(name){
+  const key=overviewCrewKey(name);
+  if(key==='gevea'||key==='adrian'||key==='jesus')return [
+    {mobilized:'2026-07-16',demobilized:'2026-08-04'},
+    {mobilized:'2026-08-11',demobilized:''}
+  ];
+  if(key==='ronaldo')return [{mobilized:'2026-07-30',demobilized:''}];
+  return [];
+}
+function ensureCrewId(e,index=0){
+  if(!e)return '';
+  if(e.crewId)return e.crewId;
+  const key=overviewCrewKey(e.name);
+  e.crewId=key?`crew_${key}`:`crew_${Date.now()}_${index}_${Math.random().toString(36).slice(2,7)}`;
+  return e.crewId;
+}
+function normalizeCrewActivityHistory(e){
+  if(!e)return [];
+  if(!Array.isArray(e.activityHistory)||!e.activityHistory.length){
+    const seeded=defaultCrewActivityHistory(e.name);
+    e.activityHistory=seeded.length?seeded:(e.mobilized?[{mobilized:e.mobilized,demobilized:(e.demob&&e.demob!=='TBD'?e.demob:'')}]:[]);
+  }
+  e.activityHistory=e.activityHistory
+    .filter(x=>x&&x.mobilized)
+    .map(x=>({mobilized:String(x.mobilized||''),demobilized:(x.demobilized&&x.demobilized!=='TBD'?String(x.demobilized):'')}))
+    .sort((a,b)=>a.mobilized.localeCompare(b.mobilized));
+  return e.activityHistory;
+}
+function masterCrewFor(e,index=0){
+  ensureTeamMaster();
+  const id=ensureCrewId(e,index);
+  let master=state.teamMaster.find(m=>m.crewId&&m.crewId===id);
+  if(!master&&e?.name)master=state.teamMaster.find(m=>m.name===e.name);
+  if(!master)master=state.teamMaster[index];
+  return master||e;
+}
+function daysInclusive(start,end){
+  if(!start||!end)return 0;
+  const a=new Date(start+'T12:00:00'),b=new Date(end+'T12:00:00');
+  if(Number.isNaN(a.getTime())||Number.isNaN(b.getTime())||b<a)return 0;
+  return Math.floor((b-a)/86400000)+1;
+}
+function dayBefore(iso){return shiftDate(iso,-1)}
+function crewActivityStats(e,asOf=todayISO(),index=0){
+  const master=masterCrewFor(e,index);
+  const history=normalizeCrewActivityHistory(master).map(x=>({...x})).sort((a,b)=>a.mobilized.localeCompare(b.mobilized));
+  let working=0,nonProductive=0;
+  history.forEach((period,i)=>{
+    if(!period.mobilized||period.mobilized>asOf)return;
+    let workEnd=asOf;
+    if(period.demobilized&&period.demobilized<=asOf)workEnd=dayBefore(period.demobilized);
+    if(workEnd>=period.mobilized)working+=daysInclusive(period.mobilized,workEnd);
+    if(period.demobilized&&period.demobilized<=asOf){
+      const next=history[i+1]?.mobilized||'';
+      let npEnd=asOf;
+      if(next&&next<=asOf)npEnd=dayBefore(next);
+      if(npEnd>=period.demobilized)nonProductive+=daysInclusive(period.demobilized,npEnd);
+    }
+  });
+  return {working,nonProductive,history};
+}
+function recordCrewMobilization(master,newDate){
+  if(!master||!newDate)return;
+  const h=normalizeCrewActivityHistory(master);
+  const last=h[h.length-1];
+  if(!last){h.push({mobilized:newDate,demobilized:''});return}
+  if(last.mobilized===newDate)return;
+  if(last.demobilized&&newDate>=last.demobilized){
+    if(!h.some(x=>x.mobilized===newDate))h.push({mobilized:newDate,demobilized:''});
+  }else if(!last.demobilized){
+    last.mobilized=newDate;
+  }else if(!h.some(x=>x.mobilized===newDate)){
+    h.push({mobilized:newDate,demobilized:''});
+  }
+  h.sort((a,b)=>a.mobilized.localeCompare(b.mobilized));
+}
+function recordCrewDemobilization(master,demobDate){
+  if(!master)return;
+  if(!demobDate||demobDate==='TBD')return;
+  const h=normalizeCrewActivityHistory(master);
+  let target=null;
+  for(const p of h){if(p.mobilized<=demobDate)target=p;else break}
+  if(!target&&h.length)target=h[h.length-1];
+  if(target)target.demobilized=demobDate;
 }
 
-function overviewCrewDaysWorked(e,asOf=todayISO()){
-  const start=overviewCrewInitialMobilization(e);
-  if(!start||!asOf)return 0;
-  const a=new Date(start+'T12:00:00');
-  const b=new Date(asOf+'T12:00:00');
-  if(Number.isNaN(a.getTime())||Number.isNaN(b.getTime())||b<a)return 0;
-  // Inclusive calendar-day count from initial mobilization through the current date.
-  return Math.floor((b-a)/86400000)+1;
+function overviewCrewInitialMobilization(e,index=0){
+  const key=overviewCrewKey(e?.name);
+  if(OVERVIEW_CREW_INITIAL_MOBILIZATION[key])return OVERVIEW_CREW_INITIAL_MOBILIZATION[key];
+  const master=masterCrewFor(e,index);
+  const history=normalizeCrewActivityHistory(master);
+  return history[0]?.mobilized||e?.mobilized||'';
+}
+
+function overviewCrewDaysWorked(e,asOf=todayISO(),index=0){
+  return crewActivityStats(e,asOf,index).working;
 }
 
 function shortCrewName(name){
@@ -1991,15 +2082,22 @@ function renderDashboard(){
     $('dashInitialMobilization').textContent=initDate?initDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):getInitialCrewMobilizationValue();
   }
   if($('dashCrewCount'))$('dashCrewCount').textContent=crew.length;
+  const crewStats=crew.map((e,i)=>crewActivityStats(e,todayISO(),i));
+  if($('dashNonProductiveDays')){
+    const maxNonProductive=crewStats.reduce((m,x)=>Math.max(m,num(x.nonProductive)),0);
+    $('dashNonProductiveDays').textContent=displayNum(maxNonProductive)+' days';
+  }
   if($('dashCrewCards')){
     $('dashCrewCards').innerHTML=crew.slice(0,4).map((e,i)=>{
-      const initialMobilization=overviewCrewInitialMobilization(e);
-      const days=overviewCrewDaysWorked(e,todayISO());
+      const initialMobilization=overviewCrewInitialMobilization(e,i);
+      const stats=crewActivityStats(e,todayISO(),i);
+      const days=stats.working;
       return `<div class="dash-crew-card">
         <div class="dash-crew-name">${esc(shortCrewName(e.name||`Crew Member ${i+1}`))}</div>
         <div class="dash-crew-meta">
           <div class="dash-crew-meta-row"><span>Initial Mobilization</span><b>${initialMobilization?fmtDate(initialMobilization):'—'}</b></div>
           <div class="dash-crew-meta-row"><span>Days Worked</span><b class="dash-days-pill">${displayNum(days||0)}</b></div>
+          <div class="dash-crew-meta-row"><span>Non-Productive Days</span><b>${displayNum(stats.nonProductive||0)}</b></div>
           <div class="dash-crew-meta-row"><span>Rotation</span><b>${esc(e.rotation||'—')}</b></div>
         </div>
       </div>`;
@@ -2087,6 +2185,7 @@ function syncProgressDailyTotal(p){
 
 function ensureTeamMaster(){
   if(!Array.isArray(state.teamMaster)||!state.teamMaster.length)state.teamMaster=structuredClone(DEFAULT_TEAM);
+  state.teamMaster.forEach((e,i)=>{ensureCrewId(e,i);normalizeCrewActivityHistory(e)});
 }
 function mergeMasterMobilizedIntoReport(report){
   // Historical DPR snapshots are immutable: never overwrite Date Mobilized or
@@ -2095,11 +2194,14 @@ function mergeMasterMobilizedIntoReport(report){
   ensureTeamMaster();
   if(!report.team||!Array.isArray(report.team))report.team=structuredClone(state.teamMaster);
   report.team.forEach((e,i)=>{
+    const byId=e.crewId?state.teamMaster.find(m=>m.crewId===e.crewId):null;
     const byName=state.teamMaster.find(m=>m.name&&e.name&&m.name===e.name);
-    const master=byName||state.teamMaster[i];
+    const master=byId||byName||state.teamMaster[i];
     if(!master)return;
+    if(!e.crewId)e.crewId=master.crewId||ensureCrewId(master,i);
     if((e.mobilized===undefined||e.mobilized===null||e.mobilized==='') && master.mobilized!==undefined)e.mobilized=master.mobilized;
     if((e.rotation===undefined||e.rotation===null||e.rotation==='') && master.rotation!==undefined)e.rotation=master.rotation;
+    if(e.demob===undefined||e.demob===null||e.demob==='')e.demob='TBD';
   });
   return report;
 }
@@ -2107,12 +2209,21 @@ function updateTeamMasterFromCurrent(index,field){
   ensureTeamMaster();
   const e=state.current?.team?.[index];
   if(!e)return;
-  let masterIndex=state.teamMaster.findIndex(m=>m.name&&e.name&&m.name===e.name);
+  ensureCrewId(e,index);
+  let masterIndex=state.teamMaster.findIndex(m=>m.crewId&&e.crewId&&m.crewId===e.crewId);
+  if(masterIndex<0&&e.name)masterIndex=state.teamMaster.findIndex(m=>m.name===e.name);
   if(masterIndex<0)masterIndex=index;
-  while(state.teamMaster.length<=masterIndex)state.teamMaster.push({name:'',mobilized:'',rotation:'',days:'',daysManual:false,demob:'TBD'});
+  while(state.teamMaster.length<=masterIndex)state.teamMaster.push({crewId:'',name:'',mobilized:'',rotation:'',days:'',daysManual:false,demob:'TBD',activityHistory:[]});
   const master=state.teamMaster[masterIndex];
+  if(!master.crewId)master.crewId=e.crewId;
+  normalizeCrewActivityHistory(master);
   if(field==='mobilized'){
     master.mobilized=e.mobilized||'';
+    recordCrewMobilization(master,e.mobilized||'');
+    if(e.name)master.name=e.name;
+  }else if(field==='demob'){
+    master.demob=e.demob||'TBD';
+    recordCrewDemobilization(master,e.demob||'');
     if(e.name)master.name=e.name;
   }else if(field==='rotation'){
     master.rotation=e.rotation||'';
@@ -2340,7 +2451,7 @@ function renderTeam(){
         <button type="button" class="crew-days-auto ${(e.daysManual===true&&e.daysManualDate===state.current?.date)?'manual':''}" data-auto-days="${i}" title="Reset to automatic Crew Days calculation">${(e.daysManual===true&&e.daysManualDate===state.current?.date)?'Manual':'Auto'}</button>
       </div>
     </td>
-    <td><input data-team="demob" data-i="${i}" value="${esc(e.demob)}"></td>
+    <td><input type="${(e.demob&&e.demob!=='TBD')?'date':'text'}" data-team="demob" data-i="${i}" value="${esc((e.demob&&e.demob!=='TBD')?e.demob:'TBD')}" placeholder="TBD" title="Click to enter Date Demobilized"></td>
     <td><button class="delete-row" data-del-team="${i}">×</button></td>
   </tr>`).join('');
 
@@ -2356,10 +2467,29 @@ function renderTeam(){
       if(row.daysManual!==true)row.days='';
       updateTeamMasterFromCurrent(+x.dataset.i,'mobilized');
     }
+    if(field==='demob')updateTeamMasterFromCurrent(+x.dataset.i,'demob');
     if(field==='rotation')updateTeamMasterFromCurrent(+x.dataset.i,'rotation');
     if(field==='name')updateTeamMasterFromCurrent(+x.dataset.i,'name');
     renderTeamDaysState();
     autoSave(false);
+  });
+  document.querySelectorAll('input[data-team="demob"]').forEach(x=>{
+    x.onfocus=()=>{
+      if(x.type==='text'){
+        if(x.value==='TBD')x.value='';
+        try{x.type='date'}catch{}
+        if(typeof x.showPicker==='function'){try{x.showPicker()}catch{}}
+      }
+    };
+    x.onblur=()=>{
+      const row=state.current.team[+x.dataset.i];
+      if(!x.value){
+        row.demob='TBD';
+        try{x.type='text'}catch{}
+        x.value='TBD';
+      }
+      autoSave(false);
+    };
   });
   document.querySelectorAll('[data-auto-days]').forEach(b=>b.onclick=()=>{
     const row=state.current.team[+b.dataset.autoDays];
@@ -2375,7 +2505,8 @@ function renderTeam(){
     const removed=state.current.team[idx];
     state.current.team.splice(idx,1);
     if(Array.isArray(state.teamMaster)){
-      const mi=state.teamMaster.findIndex(m=>removed&&removed.name&&m.name===removed.name);
+      let mi=state.teamMaster.findIndex(m=>removed?.crewId&&m.crewId===removed.crewId);
+      if(mi<0)mi=state.teamMaster.findIndex(m=>removed&&removed.name&&m.name===removed.name);
       if(mi>=0)state.teamMaster.splice(mi,1); else if(idx<state.teamMaster.length)state.teamMaster.splice(idx,1);
     }
     persist();renderTeam();autoSave(false)

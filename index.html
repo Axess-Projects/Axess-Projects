@@ -1482,7 +1482,7 @@ input,textarea,select{
             <div class="crew-summary-tile">
               <small>Current Crew</small>
               <strong id="dashCrewCount">0</strong>
-              <span>personnel listed</span>
+              <span>active personnel</span>
             </div>
           </div>
           <div id="dashCrewCards" class="dash-crew-cards"></div>
@@ -1699,7 +1699,8 @@ const DEFAULT_TEAM = [
  {crewId:'crew_gevea',name:'Gevea Johnson - NACE Coating Inspector L2',mobilized:'2026-08-11',rotation:'2nd',days:'',demob:'TBD',activityHistory:[{mobilized:'2026-07-16',demobilized:'2026-08-04'},{mobilized:'2026-08-11',demobilized:''}]},
  {crewId:'crew_ronaldo',name:'Ronaldo Schmitz - UHP Mechanic',mobilized:'2026-07-30',rotation:'1st',days:'',demob:'TBD',activityHistory:[{mobilized:'2026-07-30',demobilized:''}]},
  {crewId:'crew_adrian',name:'Adrian Oliveros - UHP Blaster/Painter',mobilized:'2026-08-11',rotation:'2nd',days:'',demob:'TBD',activityHistory:[{mobilized:'2026-07-16',demobilized:'2026-08-04'},{mobilized:'2026-08-11',demobilized:''}]},
- {crewId:'crew_jesus',name:'Jesus Jiminez - UHP Blaster/Painter',mobilized:'2026-08-11',rotation:'2nd',days:'',demob:'TBD',activityHistory:[{mobilized:'2026-07-16',demobilized:'2026-08-04'},{mobilized:'2026-08-11',demobilized:''}]}
+ {crewId:'crew_jesus',name:'Jesus Jiminez - UHP Blaster/Painter',mobilized:'2026-08-11',rotation:'2nd',days:'',demob:'TBD',activityHistory:[{mobilized:'2026-07-16',demobilized:'2026-08-04'},{mobilized:'2026-08-11',demobilized:''}]},
+ {crewId:'crew_johnson_trinity',name:'Johnson Trinity',mobilized:'2026-07-16',rotation:'1st',days:'',demob:'2026-07-30',activityHistory:[{mobilized:'2026-07-16',demobilized:'2026-07-30'}]}
 ];
 let state = {
  project: loadJSON('axess_project', DEFAULT_PROJECT),
@@ -2002,7 +2003,8 @@ const OVERVIEW_CREW_INITIAL_MOBILIZATION={
   gevea:'2026-07-16',
   adrian:'2026-07-16',
   jesus:'2026-07-16',
-  ronaldo:'2026-07-30'
+  ronaldo:'2026-07-30',
+  johnson_trinity:'2026-07-16'
 };
 
 function overviewCrewKey(name){
@@ -2011,6 +2013,7 @@ function overviewCrewKey(name){
   if(n.includes('adrian'))return 'adrian';
   if(n.includes('jesus'))return 'jesus';
   if(n.includes('ronaldo'))return 'ronaldo';
+  if(n.includes('johnson')&&n.includes('trinity'))return 'johnson_trinity';
   return '';
 }
 
@@ -2021,6 +2024,7 @@ function defaultCrewActivityHistory(name){
     {mobilized:'2026-08-11',demobilized:''}
   ];
   if(key==='ronaldo')return [{mobilized:'2026-07-30',demobilized:''}];
+  if(key==='johnson_trinity')return [{mobilized:'2026-07-16',demobilized:'2026-07-30'}];
   return [];
 }
 function ensureCrewId(e,index=0){
@@ -2060,20 +2064,45 @@ function dayBefore(iso){return shiftDate(iso,-1)}
 function crewActivityStats(e,asOf=todayISO(),index=0){
   const master=masterCrewFor(e,index);
   const history=normalizeCrewActivityHistory(master).map(x=>({...x})).sort((a,b)=>a.mobilized.localeCompare(b.mobilized));
-  let working=0,nonProductive=0;
+  let working=0,nonProductive=0,currentPeriodWorking=0;
   history.forEach((period,i)=>{
     if(!period.mobilized||period.mobilized>asOf)return;
     let workEnd=asOf;
     if(period.demobilized&&period.demobilized<=asOf)workEnd=dayBefore(period.demobilized);
-    if(workEnd>=period.mobilized)working+=daysInclusive(period.mobilized,workEnd);
+    const periodWorked=workEnd>=period.mobilized?daysInclusive(period.mobilized,workEnd):0;
+    working+=periodWorked;
+    if(!period.demobilized||period.demobilized>asOf)currentPeriodWorking=periodWorked;
     if(period.demobilized&&period.demobilized<=asOf){
       const next=history[i+1]?.mobilized||'';
-      let npEnd=asOf;
-      if(next&&next<=asOf)npEnd=dayBefore(next);
-      if(npEnd>=period.demobilized)nonProductive+=daysInclusive(period.demobilized,npEnd);
+      // Count non-productive days only after the crew member is mobilized again.
+      // An open demobilization period remains 0/N/A until a later mobilization exists.
+      if(next&&next<=asOf){
+        const npEnd=dayBefore(next);
+        if(npEnd>=period.demobilized)nonProductive+=daysInclusive(period.demobilized,npEnd);
+      }
     }
   });
-  return {working,nonProductive,history};
+  const started=history.some(p=>p.mobilized&&p.mobilized<=asOf);
+  const active=history.some(p=>p.mobilized&&p.mobilized<=asOf&&(!p.demobilized||p.demobilized>asOf));
+  const completed=history.filter(p=>p.mobilized&&p.mobilized<=asOf);
+  const latest=completed[completed.length-1]||null;
+  const latestDemobilization=[...history].reverse().find(p=>p.demobilized&&p.demobilized<=asOf)?.demobilized||'';
+  const latestMobilization=latest?.mobilized||'';
+  const initialMobilization=history[0]?.mobilized||'';
+  return {working,nonProductive,currentPeriodWorking,history,started,active,latestDemobilization,latestMobilization,initialMobilization};
+}
+function crewIsActiveOnDate(e,date,index=0){
+  return crewActivityStats(e,date,index).active;
+}
+function activeCrewForDate(date){
+  ensureTeamMaster();
+  return (state.teamMaster||[]).filter((e,i)=>crewIsActiveOnDate(e,date,i));
+}
+function filterNewReportTeamForDate(report){
+  if(!report||!report.date||state.reports?.[report.date])return report;
+  ensureTeamMaster();
+  report.team=(report.team||[]).filter((e,i)=>crewIsActiveOnDate(masterCrewFor(e,i),report.date,i));
+  return report;
 }
 function recordCrewMobilization(master,newDate){
   if(!master||!newDate)return;
@@ -2165,24 +2194,34 @@ function renderDashboard(){
     const initDate=parseFlexibleProjectDate(getInitialCrewMobilizationValue());
     $('dashInitialMobilization').textContent=initDate?initDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):getInitialCrewMobilizationValue();
   }
-  if($('dashCrewCount'))$('dashCrewCount').textContent=crew.length;
-  const crewStats=crew.map((e,i)=>crewActivityStats(e,todayISO(),i));
+  const allCrew=structuredClone(state.teamMaster||crew||DEFAULT_TEAM);
+  const activeCrew=allCrew.filter((e,i)=>crewIsActiveOnDate(e,referenceDate,i));
+  if($('dashCrewCount'))$('dashCrewCount').textContent=activeCrew.length;
+  const activeCrewStats=activeCrew.map((e,i)=>crewActivityStats(e,referenceDate,i));
   if($('dashNonProductiveDays')){
-    const maxNonProductive=crewStats.reduce((m,x)=>Math.max(m,num(x.nonProductive)),0);
-    $('dashNonProductiveDays').textContent=displayNum(maxNonProductive)+' days';
+    // The summary represents the shared non-productive project period once,
+    // rather than summing the same seven-day gap for Gevea, Adrian and Jesus.
+    const sharedNonProductive=activeCrewStats.reduce((m,x)=>Math.max(m,num(x.nonProductive)),0);
+    $('dashNonProductiveDays').textContent=displayNum(sharedNonProductive)+' days';
   }
   if($('dashCrewCards')){
-    $('dashCrewCards').innerHTML=crew.slice(0,4).map((e,i)=>{
-      const initialMobilization=overviewCrewInitialMobilization(e,i);
-      const stats=crewActivityStats(e,todayISO(),i);
-      const days=stats.working;
+    $('dashCrewCards').innerHTML=allCrew.map((e,i)=>{
+      const master=masterCrewFor(e,i);
+      const stats=crewActivityStats(master,referenceDate,i);
+      const initialMobilization=stats.initialMobilization||overviewCrewInitialMobilization(master,i);
+      const currentRotation=master.rotation||e.rotation||'—';
+      const status=stats.active?'Working':'Demobilized';
       return `<div class="dash-crew-card">
-        <div class="dash-crew-name">${esc(shortCrewName(e.name||`Crew Member ${i+1}`))}</div>
+        <div class="dash-crew-name">${esc(shortCrewName(master.name||e.name||`Crew Member ${i+1}`))}</div>
         <div class="dash-crew-meta">
           <div class="dash-crew-meta-row"><span>Initial Mobilization</span><b>${initialMobilization?fmtDate(initialMobilization):'—'}</b></div>
-          <div class="dash-crew-meta-row"><span>Days Worked</span><b class="dash-days-pill">${displayNum(days||0)}</b></div>
+          <div class="dash-crew-meta-row"><span>Latest Demobilization</span><b>${stats.latestDemobilization?fmtDate(stats.latestDemobilization):'—'}</b></div>
+          <div class="dash-crew-meta-row"><span>Latest Mobilization / Remobilization</span><b>${stats.latestMobilization?fmtDate(stats.latestMobilization):'—'}</b></div>
+          <div class="dash-crew-meta-row"><span>Current Status</span><b>${status}</b></div>
+          <div class="dash-crew-meta-row"><span>Current Rotation</span><b>${esc(currentRotation)}</b></div>
+          <div class="dash-crew-meta-row"><span>Working Days</span><b>${displayNum(stats.currentPeriodWorking||0)}</b></div>
           <div class="dash-crew-meta-row"><span>Non-Productive Days</span><b>${displayNum(stats.nonProductive||0)}</b></div>
-          <div class="dash-crew-meta-row"><span>Rotation</span><b>${esc(e.rotation||'—')}</b></div>
+          <div class="dash-crew-meta-row"><span>Total Days Worked</span><b class="dash-days-pill">${displayNum(stats.working||0)}</b></div>
         </div>
       </div>`;
     }).join('');
@@ -2269,6 +2308,10 @@ function syncProgressDailyTotal(p){
 
 function ensureTeamMaster(){
   if(!Array.isArray(state.teamMaster)||!state.teamMaster.length)state.teamMaster=structuredClone(DEFAULT_TEAM);
+  DEFAULT_TEAM.forEach((required,ri)=>{
+    const exists=state.teamMaster.some(e=>e?.crewId===required.crewId || (e?.name&&e.name===required.name));
+    if(!exists)state.teamMaster.push(structuredClone(required));
+  });
   state.teamMaster.forEach((e,i)=>{ensureCrewId(e,i);normalizeCrewActivityHistory(e)});
 }
 function mergeMasterMobilizedIntoReport(report){
@@ -2344,6 +2387,7 @@ async function loadDate(date){
   // crew master values, but later edits can never rewrite earlier snapshots.
   state.current=stored?structuredClone(stored):newReport(date);
   mergeMasterMobilizedIntoReport(state.current);
+  if(!stored)filterNewReportTeamForDate(state.current);
 
   state.photoRefs=structuredClone(state.current.photos||[]);
 

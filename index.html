@@ -1754,7 +1754,7 @@ function persist(){
 }
 function todayISO(){const d=new Date(); const o=d.getTimezoneOffset(); return new Date(d.getTime()-o*60000).toISOString().slice(0,10)}
 function shiftDate(iso,days){const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)}
-function newReport(date){return {date,status:'draft',hse:'Correct PPE For the Task',onsite:'',general:'',surfacePrep:'WJ2 Standard',paintInspection:'N/A',planned:'',paintConsumption:'N/A',progress:[],environment:structuredClone(DEFAULT_ENV),team:structuredClone(state.teamMaster||DEFAULT_TEAM),crewHoursDaily:'',crewHoursCum:'',initialMobilization:"16 July'26",agreedClient:'Y',miscNotes:'',locationRemarks:{},photos:[],lastSaved:null,dprUpdatedAt:null}}
+function newReport(date){return {date,status:'draft',hse:'Correct PPE For the Task',onsite:'',general:'',surfacePrep:'WJ2 Standard',paintInspection:'N/A',planned:'',paintConsumption:'N/A',progress:[],environment:structuredClone(DEFAULT_ENV),team:carryForwardTeamForDate(date),teamManuallyEdited:false,teamCarryVersion:2,crewHoursDaily:'',crewHoursCum:'',initialMobilization:"16 July'26",agreedClient:'Y',miscNotes:'',locationRemarks:{},photos:[],lastSaved:null,dprUpdatedAt:null}}
 function toast(msg){$('toast').textContent=msg;$('toast').classList.remove('hidden');setTimeout(()=>$('toast').classList.add('hidden'),2600)}
 async function runAction(fn,label){try{const out=fn();if(out&&typeof out.then==='function')await out}catch(e){console.error(label,e);toast(label+' failed: '+(e&&e.message?e.message:'Unknown error'))}}
 function fmtDate(iso){if(!iso)return'';const [y,m,d]=iso.split('-');return `${d}.${m}.${y}`}
@@ -1797,7 +1797,7 @@ function init(){
  $('todayDate').onclick=()=>switchReportDate(todayISO());
  $('addProgress').onclick=()=>{state.current.progress.push(blankProgress());renderProgress();autoSave(false)};
  $('addEnv').onclick=()=>{state.current.environment.push({task:'',surface:'',ambient:'',rh:'',time:''});renderEnv()};
- $('addTeam').onclick=()=>{const row={crewId:'crew_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),name:'',mobilized:'',rotation:'',days:'',daysManual:false,demob:'TBD',activityHistory:[]};state.current.team.push(structuredClone(row));state.teamMaster.push(structuredClone(row));persist();renderTeam()};
+ $('addTeam').onclick=()=>{const row={crewId:'crew_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),name:'',mobilized:'',rotation:'',days:'',daysManual:false,demob:'TBD',activityHistory:[]};state.current.team.push(structuredClone(row));state.teamMaster.push(structuredClone(row));state.current.teamManuallyEdited=true;state.current.teamCarryVersion=2;persist();renderTeam();autoSave(false)};
  $('addPhotos').onclick=()=>$('photoInput').click(); $('photoInput').onchange=handlePhotos;
  $('updateDprBtn').onclick=()=>runAction(markCurrentDprUpdated,'Update DPR');
  $('quickPreviewBtn').onclick=()=>runAction(async()=>{await refreshCurrentPhotoUrls();showPreview(false)},'Preview'); $('closePreview').onclick=()=>$('reportModal').classList.add('hidden');
@@ -2046,13 +2046,56 @@ function normalizeCrewActivityHistory(e){
     .sort((a,b)=>a.mobilized.localeCompare(b.mobilized));
   return e.activityHistory;
 }
+function normalizedCrewName(name){
+  return String(name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toLowerCase();
+}
+function crewIdentityKey(e){
+  if(!e)return '';
+  if(e.crewId)return `id:${e.crewId}`;
+  const known=overviewCrewKey(e.name);
+  if(known)return `known:${known}`;
+  const name=normalizedCrewName(e.name);
+  return name?`name:${name}`:'';
+}
+function findMasterCrew(e){
+  if(!e)return null;
+  const id=e.crewId||'';
+  if(id){const byId=(state.teamMaster||[]).find(m=>m?.crewId===id);if(byId)return byId;}
+  const known=overviewCrewKey(e.name);
+  if(known){const byKnown=(state.teamMaster||[]).find(m=>overviewCrewKey(m?.name)===known);if(byKnown)return byKnown;}
+  const name=normalizedCrewName(e.name);
+  if(name)return (state.teamMaster||[]).find(m=>normalizedCrewName(m?.name)===name)||null;
+  return null;
+}
 function masterCrewFor(e,index=0){
   ensureTeamMaster();
-  const id=ensureCrewId(e,index);
-  let master=state.teamMaster.find(m=>m.crewId&&m.crewId===id);
-  if(!master&&e?.name)master=state.teamMaster.find(m=>m.name===e.name);
-  if(!master)master=state.teamMaster[index];
-  return master||e;
+  if(!e)return null;
+  ensureCrewId(e,index);
+  return findMasterCrew(e)||e;
+}
+function latestPriorTeamReport(date){
+  const prior=Object.values(state.reports||{})
+    .filter(r=>r&&r.date&&r.date<date&&Array.isArray(r.team))
+    .sort((a,b)=>b.date.localeCompare(a.date))[0];
+  return prior||null;
+}
+function carryForwardTeamForDate(date){
+  ensureTeamMaster();
+  const prior=latestPriorTeamReport(date);
+  const source=prior?.team?.length?prior.team:(state.teamMaster||DEFAULT_TEAM);
+  return structuredClone(source).filter((e,i)=>{
+    const demob=(e?.demob&&e.demob!=='TBD')?e.demob:'';
+    if(demob&&demob<date)return false;
+    const mob=e?.mobilized||'';
+    if(mob&&mob>date)return false;
+    return true;
+  }).map((e,i)=>{
+    const master=findMasterCrew(e);
+    if(!e.crewId&&master?.crewId)e.crewId=master.crewId;
+    if(!e.crewId)ensureCrewId(e,i);
+    e.daysManual=false;e.daysManualDate='';e.days='';
+    return e;
+  });
 }
 function daysInclusive(start,end){
   if(!start||!end)return 0;
@@ -2100,8 +2143,7 @@ function activeCrewForDate(date){
 }
 function filterNewReportTeamForDate(report){
   if(!report||!report.date||state.reports?.[report.date])return report;
-  ensureTeamMaster();
-  report.team=(report.team||[]).filter((e,i)=>crewIsActiveOnDate(masterCrewFor(e,i),report.date,i));
+  report.team=carryForwardTeamForDate(report.date);
   return report;
 }
 function recordCrewMobilization(master,newDate){
@@ -2169,9 +2211,10 @@ function renderDashboard(){
       : (state.teamMaster||state.current?.team||DEFAULT_TEAM)
   );
   const today=todayISO();
-  const selectedDate=state.current?.date||today;
-  const safeSelectedDate=selectedDate>today?today:selectedDate;
-  const referenceDate=latestDate||safeSelectedDate;
+  // The Overview is intentionally independent of the Daily Update date being viewed.
+  // Use the latest confirmed DPR date when available; otherwise use today so opening
+  // a historical DPR can never roll Crew Activity Overview back to that old date.
+  const referenceDate=latestDate||today;
   const projectDays=projectDaysWorkedAsOf(referenceDate);
 
   $('dashProjectTitle').textContent=p.installation||'Deepwater Thalassa';
@@ -2211,8 +2254,12 @@ function renderDashboard(){
       const initialMobilization=stats.initialMobilization||overviewCrewInitialMobilization(master,i);
       const currentRotation=master.rotation||e.rotation||'—';
       const status=stats.active?'Working':'Demobilized';
+      const rawDisplayName=master.name||e.name||`Crew Member ${i+1}`;
+      const displayName=(master.crewId==='crew_johnson_trinity'||overviewCrewKey(rawDisplayName)==='johnson trinity')
+        ? 'Johnson Trinity – UHP Mechanic'
+        : rawDisplayName;
       return `<div class="dash-crew-card">
-        <div class="dash-crew-name">${esc(shortCrewName(master.name||e.name||`Crew Member ${i+1}`))}</div>
+        <div class="dash-crew-name">${esc(shortCrewName(displayName))}</div>
         <div class="dash-crew-meta">
           <div class="dash-crew-meta-row"><span>Initial Mobilization</span><b>${initialMobilization?fmtDate(initialMobilization):'—'}</b></div>
           <div class="dash-crew-meta-row"><span>Latest Demobilization</span><b>${stats.latestDemobilization?fmtDate(stats.latestDemobilization):'—'}</b></div>
@@ -2321,9 +2368,7 @@ function mergeMasterMobilizedIntoReport(report){
   ensureTeamMaster();
   if(!report.team||!Array.isArray(report.team))report.team=structuredClone(state.teamMaster);
   report.team.forEach((e,i)=>{
-    const byId=e.crewId?state.teamMaster.find(m=>m.crewId===e.crewId):null;
-    const byName=state.teamMaster.find(m=>m.name&&e.name&&m.name===e.name);
-    const master=byId||byName||state.teamMaster[i];
+    const master=findMasterCrew(e);
     if(!master)return;
     if(!e.crewId)e.crewId=master.crewId||ensureCrewId(master,i);
     if((e.mobilized===undefined||e.mobilized===null||e.mobilized==='') && master.mobilized!==undefined)e.mobilized=master.mobilized;
@@ -2338,9 +2383,18 @@ function updateTeamMasterFromCurrent(index,field){
   if(!e)return;
   ensureCrewId(e,index);
   let masterIndex=state.teamMaster.findIndex(m=>m.crewId&&e.crewId&&m.crewId===e.crewId);
-  if(masterIndex<0&&e.name)masterIndex=state.teamMaster.findIndex(m=>m.name===e.name);
-  if(masterIndex<0)masterIndex=index;
-  while(state.teamMaster.length<=masterIndex)state.teamMaster.push({crewId:'',name:'',mobilized:'',rotation:'',days:'',daysManual:false,demob:'TBD',activityHistory:[]});
+  if(masterIndex<0){
+    const known=overviewCrewKey(e.name);
+    if(known)masterIndex=state.teamMaster.findIndex(m=>overviewCrewKey(m?.name)===known);
+  }
+  if(masterIndex<0&&e.name){
+    const normalized=normalizedCrewName(e.name);
+    masterIndex=state.teamMaster.findIndex(m=>normalizedCrewName(m?.name)===normalized);
+  }
+  if(masterIndex<0){
+    state.teamMaster.push(structuredClone({...e,activityHistory:Array.isArray(e.activityHistory)?e.activityHistory:[]}));
+    masterIndex=state.teamMaster.length-1;
+  }
   const master=state.teamMaster[masterIndex];
   if(!master.crewId)master.crewId=e.crewId;
   normalizeCrewActivityHistory(master);
@@ -2373,6 +2427,7 @@ async function saveCurrentBeforeDateChange(){
     state.current.status='draft';
   }
 
+  state.current.teamCarryVersion=2;
   state.current.lastSaved=new Date().toISOString();
   const snapshot=structuredClone(state.current);
   state.reports[snapshot.date]=snapshot;
@@ -2386,6 +2441,13 @@ async function loadDate(date){
   // Existing dates load their own saved snapshot. New dates inherit the latest
   // crew master values, but later edits can never rewrite earlier snapshots.
   state.current=stored?structuredClone(stored):newReport(date);
+  // Preserve past DPR snapshots exactly. For legacy/currently-unsaved future DPRs
+  // created by the older master-filter logic, rebuild the team from the immediately
+  // preceding Daily Update unless that date has an explicit manual team edit.
+  if(stored&&date>todayISO()&&stored.teamCarryVersion!==2&&stored.teamManuallyEdited!==true){
+    state.current.team=carryForwardTeamForDate(date);
+    state.current.teamCarryVersion=2;
+  }
   mergeMasterMobilizedIntoReport(state.current);
   if(!stored)filterNewReportTeamForDate(state.current);
 
@@ -2610,6 +2672,8 @@ function renderTeam(){
     const row=state.current.team[+x.dataset.i];
     const field=x.dataset.team;
     row[field]=x.value;
+    state.current.teamManuallyEdited=true;
+    state.current.teamCarryVersion=2;
     if(field==='days'){
       row.daysManual=true;
       row.daysManualDate=state.current?.date||'';
@@ -2655,11 +2719,10 @@ function renderTeam(){
     const idx=+x.dataset.delTeam;
     const removed=state.current.team[idx];
     state.current.team.splice(idx,1);
-    if(Array.isArray(state.teamMaster)){
-      let mi=state.teamMaster.findIndex(m=>removed?.crewId&&m.crewId===removed.crewId);
-      if(mi<0)mi=state.teamMaster.findIndex(m=>removed&&removed.name&&m.name===removed.name);
-      if(mi>=0)state.teamMaster.splice(mi,1); else if(idx<state.teamMaster.length)state.teamMaster.splice(idx,1);
-    }
+    // Removing a person changes this date's active team and future carry-forward,
+    // but never deletes the person's master/history record used by Overview.
+    state.current.teamManuallyEdited=true;
+    state.current.teamCarryVersion=2;
     persist();renderTeam();autoSave(false)
   });
 }
